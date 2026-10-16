@@ -19,18 +19,17 @@
 </script>
 
 <script lang="ts">
-  import { icon } from './lib/production';
 
   let { id }: { id: string | null } = $props();
   let D = $state<PData>();
   loadPrivileges().then(d => D = d);
 
-  const ESTATE_ICON: Record<string, string> = {nobles_estate: 'nobles', clergy_estate: 'clergy', burghers_estate: 'burghers', peasants_estate: 'peasants', tribes_estate: 'tribesmen'};
-  const estIcon = (e: string, label: string) => icon('pops', ESTATE_ICON[e] ?? e, label);
   const TYPE_LABEL: Record<string, string> = {tag: 'Country', culture: 'Culture', religion: 'Religion', region: 'Region', government: 'Government', unlock: 'Unlock', other: 'Other', any: 'Any of', all: 'Everyone'};
   const AVAIL: [string, string][] = [['', 'Any'], ['all', 'Everyone'], ['tag', 'Country-specific'], ['culture', 'Culture'], ['religion', 'Religion'], ['region', 'Region'], ['other', 'Other']];
 
   let filter = $state(''), estSel = $state<string[]>([]), avail = $state(''), kind = $state('');
+  let cards = $state(localStorage.getItem('privView') === 'cards');
+  $effect(() => localStorage.setItem('privView', cards ? 'cards' : 'list'));
   let mainEl = $state<HTMLElement>();
   $effect(() => { id; mainEl?.scrollTo(0, 0); });
   const toggle = (e: MouseEvent) => (e.target as Element).closest('section.card > h4')?.parentElement!.classList.toggle('shut');
@@ -120,7 +119,7 @@
     {:else if id && !P}
       <div class="title"><div><h2>Unknown privilege</h2><p class="desc">There is no estate privilege called “{id}”. <a class="wn" href="#e">Back to the overview</a>.</p></div></div>
     {:else if P}
-      <div class="title lg">{@html estIcon(P.estate, P.estateName)}
+      <div class="title lg"><span class="art big"><img src="icons/privileges/{P.id}.webp" alt=""></span>
         <div><h2>{P.name}</h2>
           <div class="meta"><span>{P.estateName}</span>{#if P.months}<span>takes {P.months} months to take effect</span>{/if}{#if !P.canRevoke}<span>cannot be revoked</span>{/if}</div>
           {#if P.desc}<p class="desc">{P.desc}</p>{/if}
@@ -206,16 +205,24 @@
           {#each ['all', 'tag', 'culture', 'religion', 'region', 'government', 'unlock', 'other'] as t}<button class="wb t-{t}" class:on={kind === t} onclick={() => kind = kind === t ? '' : t}
             title={kind === t ? 'Show all again' : t === 'all' ? 'Only privileges open to everyone' : `Only privileges with a ${TYPE_LABEL[t].toLowerCase()} condition`}>{t === 'all' ? 'Everyone' : TYPE_LABEL[t]}</button>{/each}
           {#if kind}<span class="meta">{shown.length} shown</span>{/if}</div>
+        <div class="wline"><span class="flbl">View</span><span class="pfb"><button class:on={!cards} onclick={() => cards = false}>List</button><button class:on={cards} onclick={() => cards = true}>Cards</button></span></div>
       </div></div>
       {#each groupsShown as g (g.e.id)}
         <section class="card"><h4 class="gold">{g.e.name}<small>{g.list.length} privileges</small></h4>
+          {#if cards}<div class="pcards">{#each g.list as p (p.id)}
+            <a class="pcard" href="#e/{p.id}">
+              <span class="art"><img src="icons/privileges/{p.id}.webp" alt="" loading="lazy">{#if p.who.length}<span class="dot t-{p.types[0] ?? 'other'}" title={p.whoText}></span>{/if}</span>
+              <b class="pn">{p.name}</b>
+              <span class="pe">{effLine(p)}</span>
+            </a>
+          {/each}</div>{:else}
           {#each g.list as p (p.id)}
             <a class="prow" href="#e/{p.id}">
               <b class="pn">{p.name}</b>
               <span class="pe">{effLine(p)}</span>
               <span class="pb">{#each badges(p).slice(0, 3) as b}<span class="wb t-{b.type}" class:neg={b.not} title={b.title}>{b.label}</span>{/each}{#if p.who.length > 3}<span class="tag">+{p.who.length - 3}</span>{/if}</span>
             </a>
-          {/each}
+          {/each}{/if}
         </section>
       {:else}<p class="meta">No privilege matches the filters.</p>{/each}
     {/if}
@@ -263,6 +270,20 @@
 
   /* overview rows */
   .prow { display: grid; grid-template-columns: minmax(10em, 15em) minmax(0, 1fr) minmax(0, 24em); gap: 12px; align-items: center; padding: 5px 4px; border-top: 1px solid var(--line); }
+  .pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 10px; padding: 8px 2px 4px; }
+  .pcard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px; border-radius: 6px; text-align: center; }
+  .pcard:hover { background: var(--panel2); }
+  .pcard:hover .pn { color: var(--gold); }
+  .pcard:hover .art { border-color: var(--frame-hi); box-shadow: 0 0 10px #d8b46a66, inset 0 0 0 1px #0008; transform: translateY(-2px); }
+  .pcard .pn { font-weight: 600; font-size: 14px; line-height: 1.25; }
+  .pcard .pe { color: var(--dim); font-size: 12px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  /* the game's card: portrait art in a thin gilded frame */
+  .art { position: relative; flex: none; display: block; width: 96px; height: 135px; border: 2px solid var(--frame); border-radius: 7px; overflow: hidden;
+    background: #0d1117; box-shadow: 0 2px 6px #0009, inset 0 0 0 1px #0008; transition: transform .15s, box-shadow .15s, border-color .15s; }
+  .art img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  .art .dot { position: absolute; top: 5px; right: 5px; width: 10px; height: 10px; border: 1px solid #000a; }
+  .art.big { width: 116px; height: 163px; margin-right: 6px; }
+  @media (prefers-reduced-motion: reduce) { .pcard:hover .art { transform: none; } }
   .prow:first-of-type { border-top: none; }
   .prow:hover { background: var(--panel2); }
   .prow:hover .pn { color: var(--gold); }

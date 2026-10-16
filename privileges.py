@@ -5,7 +5,7 @@ Usage: python3 -I privileges.py [game_dir]
 "Who" items are {type, kind, ids, names, not?, text} with type in tag / culture / religion / region / government /
 unlock / other; an OR of mixed kinds becomes {type:'any', any:[items]}, unknown block triggers {type:'other', all:[items]}.
 Empty `who` = everyone. Scripted triggers are expanded by name where possible; the rest are kept as 'other' items."""
-import sys, os, re
+import sys, os, re, glob, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from eu5lib import *
 
@@ -404,3 +404,13 @@ print('availability (a privilege can count under several):', av)
 print('universal:', sum(1 for e in res if not e['who']), ' restricted:', sum(1 for e in res if e['who']))
 print('unresolved triggers/keys:', dict(sorted(unresolved.items(), key=lambda x: -x[1])))
 print('modifier labels named/raw:', mod_cov, 'raw keys:', dict(raw_keys))
+
+# card art: every privilege has a 64x90 picture named after it (DLC ones live under dlc/)
+ART = {os.path.basename(f)[:-4]: f for f in glob.glob(f'{GAME}/main_menu/gfx/interface/icons/privileges/*.dds')
+       + glob.glob(f'{GAME}/dlc/*/main_menu/gfx/interface/icons/privileges/*.dds')}
+os.makedirs(f'{OUT}/public/icons/privileges', exist_ok=True)
+for e in res:
+    dst = f'{OUT}/public/icons/privileges/{e["id"]}.webp'
+    if not os.path.exists(dst):
+        subprocess.run(['magick', ART.get(e['id'], ART['_default']), '-strip', '-quality', '88', dst], check=True)
+print('card art:', sum(e['id'] in ART for e in res), 'of', len(res))
