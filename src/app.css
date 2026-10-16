@@ -302,6 +302,8 @@ img.hic { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; 
 /* nation flags: in lists, and framed on the title plate */
 .fl { display: inline-block; flex: none; width: 21px; height: 14px; border: 1px solid #000; box-shadow: 0 0 0 1px #ffffff22; overflow: hidden; vertical-align: -2px; margin-right: 6px; }
 .blist .fl { margin-right: 0; }
+.popbar .pd.tot { margin-right: 8px; box-shadow: 4px 0 0 -2px var(--frame); }
+.popbar .pd.tot b { color: var(--text); }
 .fl img { display: block; width: 100%; height: 100%; }
 .bigflag { flex: none; width: 96px; height: 64px; position: relative; overflow: hidden; border: 1px solid #000; box-shadow: 0 0 0 2px var(--frame-hi), 0 3px 8px #000c; }
 .bigflag img { display: block; width: 100%; height: 100%; }
@@ -331,6 +333,16 @@ img.hic { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; 
 .ncols { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 0 16px; align-items: start; }
 .ncols > div > .card { margin-bottom: 16px; }
 .ugroup { margin: 0 0 6px; }
+.sp { display: grid; grid-template-columns: 8.5em 1fr; gap: 8px; align-items: center; padding: 3px 0; border-top: 1px solid #ffffff0d; }
+.sp .who { display: flex; align-items: center; gap: 6px; color: var(--dim); }
+.sp .who img.ic { width: 22px; height: 22px; }
+.laws { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; padding: 4px 0; }
+.laws span { color: var(--dim); }
+.laws b { font-weight: normal; color: var(--text); }
+.sv { display: grid; grid-template-columns: 1fr 9em 1fr; gap: 8px; align-items: center; font-size: 13px; color: var(--dim); padding: 2px 0; }
+.sv > span:first-child { text-align: right; }
+.svbar { position: relative; height: 6px; background: linear-gradient(90deg, #6a8fb3, #3a4350 50%, #b38a5a); border-radius: 3px; }
+.svbar i { position: absolute; top: -4px; width: 4px; height: 14px; margin-left: -2px; background: var(--gold); box-shadow: 0 0 3px #000; border-radius: 1px; }
 .ugroup > summary .cnt { margin-left: 8px; }
 .ugroup > summary { cursor: pointer; color: var(--gold); font-variant: small-caps; letter-spacing: .04em; padding: 2px 0; border-bottom: 1px solid var(--line); }
 .uq { padding: 5px 0 5px 4px; border-bottom: 1px solid #ffffff0d; }

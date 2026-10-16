@@ -3,12 +3,24 @@
   import { DATA } from './lib/data';
   import { gChip, pIcon, pName, fmt, esc, popDemand, icon } from './lib/production';
   import NationMap from './NationMap.svelte';
-  import { loadNations, loadUnique, analyse, subjectsOf, UPPER, type NationData, type Unique } from './lib/nations';
+  import { loadNations, loadUnique, loadStart, analyse, subjectsOf, UPPER, type NationData, type Unique, type StartData } from './lib/nations';
 
   let { tag }: { tag: string | null } = $props();
   const G = DATA.goods;
   let N = $state<NationData>();
   loadNations().then(d => N = d);
+  let S = $state<StartData | null>(null);
+  loadStart().then(d => S = d);
+  const st = $derived(tag ? S?.countries[tag] : undefined);
+  const sn = (id: string) => S?.names[id] ?? id;
+  // starting privileges by estate, in the game's estate order
+  const ESTATES = ['crown_estate', 'nobles_estate', 'clergy_estate', 'burghers_estate', 'peasants_estate'];
+  const ESTATE_POP: Record<string, string> = {nobles_estate: 'nobles', clergy_estate: 'clergy', burghers_estate: 'burghers', peasants_estate: 'peasants'};
+  const privByEstate = $derived.by(() => {
+    const by: Record<string, string[]> = {};
+    for (const p of st?.privileges ?? []) (by[S!.estateOf[p] ?? 'other'] ??= []).push(p);
+    return Object.entries(by).sort((a, b) => (ESTATES.indexOf(a[0]) + 1 || 99) - (ESTATES.indexOf(b[0]) + 1 || 99));
+  });
   let U = $state<Record<string, Unique[]>>({});
   loadUnique().then(d => U = d);
   // what only this nation (or a handful) gets, grouped; advances last and folded
@@ -55,6 +67,7 @@
   const wantNear = $derived(A && ranked[0] ? nearList.filter(e => e.isNew).map(e => ({...e, v: Math.max(0, popDemand(e.g, ranked[0].p) * G[e.g].price,
     ...ranked[0].almost.filter(x => A!.reach[x.g].missing.includes(e.g)).map(x => x.v))})).filter(e => e.v > 0).sort((a, b) => b.v - a.v).slice(0, 4) : []);
   const popTotal = (t: string) => Object.values(N!.countries[t].pops).reduce((s, n) => s + n, 0);
+  const kPeople = (k: number) => k >= 1000 ? (k / 1000).toFixed(k >= 10000 ? 0 : 2) + 'M' : Math.round(k) + 'k';  // thousands -> 211k / 1.25M
   const locName = (i: number | null) => i == null ? '' : N!.locs[i][0];
 </script>
 
@@ -82,6 +95,7 @@
             <label class="tgl"><input type="checkbox" bind:checked={withSubjects}> count their land</label></p>{/if}
         </div>
         <div class="popbar"><span class="flbl">Starting pops</span><div class="row">
+          <span class="pd tot" title="All pops: {Math.round(popTotal(tag) * 1000).toLocaleString('en')} people in {c.name}'s own locations (subjects not counted)"><img class="ic" src="icons/misc/all_pops.png" alt="All pops"><b>{kPeople(popTotal(tag))}</b></span>
           {#each Object.entries(c.pops).sort((a, b) => b[1] - a[1]) as [p, n]}
             <span class="pd" class:top={UPPER.includes(p)} title="{pName(p)}: {fmt(n * 1000)} people, {(100 * n / popTotal(tag)).toPrecision(2)}% of your population">{@html pIcon(p)}<b>{n >= 1 ? Math.round(n) + 'k' : fmt(n * 1000)}</b></span>
           {/each}
@@ -112,6 +126,26 @@
               {/if}
             </div>
           </section>
+
+          {#if st}
+            <section class="card"><h4 class="gold">Starting position<small>{st.gov ? sn(st.gov) : ''}{st.reforms.length ? ' · ' + st.reforms.map(sn).join(', ') : ''}</small></h4>
+              <div class="flbl">Estate privileges</div>
+              {#each privByEstate as [e, ps] (e)}
+                <div class="sp"><span class="who">{#if ESTATE_POP[e]}{@html pIcon(ESTATE_POP[e])}{/if}{sn(e)}</span>
+                  <span>{#each ps as p}<a class="chip" href="#e/{p}">{sn(p)}</a>{/each}</span></div>
+              {:else}<p class="meta">None.</p>{/each}
+              <details class="ugroup"><summary>Laws<span class="cnt">{Object.keys(st.laws).length}</span></summary>
+                <div class="laws">{#each Object.entries(st.laws) as [l, pol]}<span>{sn(l)}</span><b>{sn(pol)}</b>{/each}</div>
+              </details>
+              <details class="ugroup"><summary>Societal values<span class="cnt">{st.values.filter(v => v != null).length}</span></summary>
+                {#each S!.axes as a, i}{#if st.values[i] != null}
+                  <div class="sv"><span>{S!.axisNames[i][0]}</span><span class="svbar"><i style="left:{(st.values[i]! + 100) / 2}%"></i></span><span>{S!.axisNames[i][1]}</span></div>
+                {/if}{/each}
+              </details>
+              <p class="meta">From a save of the 1337 start: privileges, laws and reforms as granted at setup; societal values as of {S!.date}.
+                Crown power and estate power aren't stored in saves (the game works them out as it runs), so they aren't shown.</p>
+            </section>
+          {/if}
 
           <section class="card"><h4 class="pop">Who your land is built for<small>your surplus of each class's goods</small></h4>
             {#each ranked as k (k.p)}

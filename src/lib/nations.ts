@@ -20,6 +20,12 @@ export interface Unique { kind: string; id: string; name: string; desc?: string;
 let uniqueCache: Promise<Record<string, Unique[]>> | undefined;
 export const loadUnique = () => uniqueCache ??= fetch('unique.json').then(r => r.ok ? r.json() : {});
 
+// public/start.json (start.py, from a text save of the 1337 campaign): what each country starts with
+export interface Start { gov?: string; privileges: string[]; laws: Record<string, string>; reforms: string[]; values: (number | null)[]; estates: Record<string, number> }
+export interface StartData { date: string; setup: string; axes: string[]; axisNames: [string, string][]; names: Record<string, string>; estateOf: Record<string, string>; countries: Record<string, Start> }
+let startCache: Promise<StartData | null> | undefined;
+export const loadStart = () => startCache ??= fetch('start.json').then(r => r.ok ? r.json() : null).catch(() => null);
+
 // public/map.png: one pixel per 8x8 map units, red * 256 + green = 0 water, 1 wasteland, i + 2 = locs[i]
 export const MAP_SCALE = 8;
 let mapCache: Promise<{w: number; h: number; c: Uint16Array}> | undefined;

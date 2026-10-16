@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
-    "data": "python3 -I build.py && python3 -I unique.py && python3 -I flags.py"
+    "data": "python3 -I build.py && python3 -I unique.py && python3 -I privileges.py && python3 -I advances.py && python3 -I start.py && python3 -I flags.py"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
