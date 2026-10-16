@@ -71,7 +71,7 @@
 {#snippet sources(list: ReturnType<typeof sourcesFor>, plain = /desired_pop$|promotion_speed$|tribal_promotion$/, max = 0)}
   {#if max && list.length > max + 3}
     {@render sources(list.slice(0, max), plain)}
-    <details><summary class="more">{list.length - max} more</summary>{@render sources(list.slice(max), plain)}<button class="tag less">Show less</button></details>
+    <details><summary class="tag more">+{list.length - max} more</summary>{@render sources(list.slice(max), plain)}<button class="tag less">Show less</button></details>
   {:else}{#each list as [s, ms]}
     <div class="dm src" class:later={later(s)} title={later(s) ? `Unlocks in age ${ROMAN[srcAge(s)!]}` : undefined}><span class="v">{#each ms as [k, v]}<span class={bad(k, v) ? 'down' : 'up'} title={modName(k)}>{modVal(k, v)}</span>{/each}</span><span>{#if ms.length > 1 || !plain.test(ms[0][0])}<i class="mk">{ms.map(([k]) => modName(k)).join(', ')}</i>{/if}{@html srcName(s)}</span></div>
   {/each}{/if}
@@ -87,7 +87,7 @@
     </div>
   </aside>
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-  <main bind:this={mainEl} onclick={toggle}>
+  <main bind:this={mainEl} onclick={toggle}>{#key id}<div class="enter">
     {#if id === 'growth'}
       {@const F = PI.food}
       <div class="title lg"><img class="ic" src="icons/misc/growth.png" alt=""><div><h2>Population growth</h2>
@@ -132,10 +132,10 @@
           <span class="pd food" title="Food eaten per pop"><span class="big">{fmt(t.food)}</span><b>food</b></span>
         </div></div>
       </div>
-      <div class="pcards">
-        <section class="card"><h4 class="pop">What they buy (per pop, {ageLabel})</h4>
-          {#each wanted.filter(g => demand(g, id!) > 0).sort((a, b) => demand(b, id!) - demand(a, id!)) as g}
-            <div class="bar-row">{@html gChip(g)}<span class="bar"><span style="width:{100 * demand(g, id) / colMax[id]}%"></span></span><span class="n">{fmt(demand(g, id))}</span>{#if G[g].cond}<span class="tag" title="Demand changes with where they live: see the good's page">varies</span>{/if}</div>
+      <div class="pcards two">
+        <section class="card"><h4 class="pop">What they buy<small>per pop, {ageLabel}</small></h4>
+          {#each wanted.filter(g => demand(g, id!) > 0).sort((a, b) => demand(b, id!) - demand(a, id!)) as g, i (g)}
+            <div class="bar-row">{@html gChip(g)}<span class="bar"><span style="width:{100 * demand(g, id) / colMax[id]}%; --i:{Math.min(i, 16)}"></span></span><span class="n">{fmt(demand(g, id))}</span>{#if G[g].cond}<span class="tag" title="Demand changes with where they live: see the good's page">varies</span>{/if}</div>
           {:else}<p class="meta">No base demand.</p>{/each}
           {#if Object.keys(G).some(g => G[g].demandMul[id!] === 0)}
             <div class="dsec"><span class="flbl">Never buys</span> {@html Object.keys(G).filter(g => G[g].demandMul[id!] === 0).map(g => gChip(g)).join('')}</div>
@@ -151,7 +151,7 @@
           {#if !t.cap}<p class="meta">No location cap: there is no "Possible {P[id]}" limit.</p>{/if}
         </section>
         {#if t.cap}
-          <section class="card"><h4 class="out">Room for them (Possible {P[id]})</h4>
+          <section class="card"><h4 class="out">Room for them<small>Possible {P[id]}</small></h4>
             <p class="meta">How many {P[id]} a location can hold.</p>
             {#each Object.entries(PI.base).filter(([k]) => desiredKey(id!).test(k)) as [k, v]}
               <div class="dm"><span class="v up">{signed(v)}</span><span><span class="tag">Every location</span> <i>{modName(k)}</i></span></div>
@@ -187,7 +187,7 @@
             <td class="n">{wanted.filter(g => demand(g, p) > 0).length}</td><td>{@html T[p].promoteTo.map(q => pIcon(q)).join('')}</td></tr>{/each}</tbody></table>
       </section>
       <div class="pgrid">
-      <section class="card"><h4 class="pop">Demand by class (per pop, {ageLabel})</h4>
+      <section class="card"><h4 class="pop">Demand by class<small>per pop, {ageLabel}</small></h4>
         <p class="meta">Click a class to sort by it. Brighter cells mean more of what that class buys. Demand also grows with the location's development.</p>
         <div class="mtx-wrap"><table class="ptab mtx"><thead><tr><th><button onclick={() => sortBy = null} class:on={!sortBy}>Good</button></th>
           {#each POPS as p}<th><button onclick={() => sortBy = p} class:on={sortBy === p} title="Sort by {P[p]}">{@html pIcon(p)}</button></th>{/each}</tr></thead>
@@ -214,5 +214,5 @@
       </div>
       </div>
     {/if}
-  </main>
+  </div>{/key}</main>
 </div>

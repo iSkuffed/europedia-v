@@ -382,9 +382,9 @@ function goodView(g: string) {
 
   return `<div class="title lg">${icon('goods', g, x.name)}<div><h2>${esc(x.name)}</h2><div class="meta">${meta.map(m => `<span>${esc(m)}</span>`).join('')}</div>${conNote(g)}${ageNote(g)}</div>${foodBar(g)}${conBar(g)}${popBar(g)}${filterBar(g)}</div>
   ${cards([
-    [upChain(g), `<h4 class="in">Upstream — what it takes to make ${esc(x.name)}</h4>`, 'Raw material, extracted by RGOs.', 'big'],
-    [downChain(g), `<h4 class="out">Downstream — what ${esc(x.name)} becomes</h4>`, 'Not processed into any other good.'],
-    [upkeepGroups(g, ms), '<h4 class="gold">Building upkeep — amount is per building</h4>', 'Not used as building upkeep.'],
+    [upChain(g), `<h4 class="in">Upstream<small>what it takes to make ${esc(x.name)}</small></h4>`, 'Raw material, extracted by RGOs.', 'big'],
+    [downChain(g), `<h4 class="out">Downstream<small>what ${esc(x.name)} becomes</small></h4>`, 'Not processed into any other good.'],
+    [upkeepGroups(g, ms), '<h4 class="gold">Building upkeep<small>amount is per building</small></h4>', 'Not used as building upkeep.'],
     [made, '<h4 class="out">Produced by</h4>', 'No building produces this.'],
     [recipeGroups(cs), '<h4 class="in">Input for production</h4>', 'Not an input for any production method.'],
     [pops || muls || x.food ? `${pops || muls ? `<table class="pops">${pops}${muls}</table>` : ''}
@@ -424,7 +424,7 @@ function buildingView(bid: string) {
     [up.map(r => `<div class="rec">${r.name ? `<div class="rname">${esc(r.name)}</div>` : ''}${Object.entries(r.in).map(([g, n]) => gChip(g, n)).join('') || '<span class="none">none</span>'}</div>`).join(''), '<h4 class="gold">Upkeep</h4>', 'No goods upkeep.'],
     [build + (replaces ? `<div class="rec"><span class="arrow">Replaces</span>${replaces}</div>` : '')
       + (replacedBy ? `<div class="rec"><span class="arrow">Replaced by</span>${replacedBy}</div>` : ''), '<h4 class="gold">Construction</h4>', 'No goods cost listed.'],
-    ...outs.map((o): Card => [downChain(o), `<h4 class="out">Downstream — what ${esc(G[o].name)} becomes</h4>`, `${esc(G[o].name)} is not processed into any other good.`]),
+    ...outs.map((o): Card => [downChain(o), `<h4 class="out">Downstream<small>what ${esc(G[o].name)} becomes</small></h4>`, `${esc(G[o].name)} is not processed into any other good.`]),
   ])}`;
 }
 
@@ -482,7 +482,7 @@ function route(side: HTMLElement, main: HTMLElement) {
   if (t === 'g') F.rec = qs.has('rec') ? +qs.get('rec')! : null;
   F.on = t === 'g'; F.g = t === 'g' ? id : F.g;
   const body = t === 'g' && G[id] ? goodView(id) : t === 'b' && B[id] ? buildingView(id) : overview();
-  main.innerHTML = `<div class="view">${body}${EMPTY.length ? `<div class="empty-note">${EMPTY.map(e => `<span>${e}</span>`).join('')}</div>` : ''}</div>`;
+  main.innerHTML = `<div class="view${keepScroll ? '' : ' enter'}">${body}${EMPTY.length ? `<div class="empty-note">${EMPTY.map(e => `<span>${e}</span>`).join('')}</div>` : ''}</div>`;
   layoutMasonry(main);
   if (!keepScroll) main.scrollTop = 0;
   keepScroll = false;
