@@ -128,11 +128,13 @@
           </section>
 
           {#if st}
-            <section class="card"><h4 class="gold">Starting position<small>{st.gov ? sn(st.gov) : ''}{st.reforms.length ? ' · ' + st.reforms.map(sn).join(', ') : ''}</small></h4>
+            <section class="card"><h4 class="gold">Starting position<small>{st.gov ? sn(st.gov) : ''}</small></h4>
+              {#if st.reforms.length}<div class="flbl">Government reforms</div>
+                <div class="minicards sp-reforms">{#each st.reforms as r}<span class="minicard"><span class="art sm"><img src="icons/reforms/{r}.webp" alt="" loading="lazy"></span>{sn(r)}</span>{/each}</div>{/if}
               <div class="flbl">Estate privileges</div>
               {#each privByEstate as [e, ps] (e)}
                 <div class="sp"><span class="who">{#if ESTATE_POP[e]}{@html pIcon(ESTATE_POP[e])}{/if}{sn(e)}</span>
-                  <span>{#each ps as p}<a class="chip" href="#e/{p}">{sn(p)}</a>{/each}</span></div>
+                  <div class="minicards">{#each ps as p}<a class="minicard" href="#e/{p}"><span class="art sm"><img src="icons/privileges/{p}.webp" alt="" loading="lazy"></span>{sn(p)}</a>{/each}</div></div>
               {:else}<p class="meta">None.</p>{/each}
               <details class="ugroup"><summary>Laws<span class="cnt">{Object.keys(st.laws).length}</span></summary>
                 <div class="laws">{#each Object.entries(st.laws) as [l, pol]}<span>{sn(l)}</span><b>{sn(pol)}</b>{/each}</div>
@@ -172,13 +174,17 @@
               {#each uniq as grp (grp.k)}
                 <details class="ugroup" open={grp.k !== 'advance'}><summary>{grp.label}<span class="cnt">{grp.items.length}</span></summary>
                   {#each grp.items as u (u.kind + u.id)}
-                    <div class="uq">
+                    <div class="uq" class:withart={u.kind === 'privilege' || u.kind === 'reform'}>
+                      {#if u.kind === 'privilege'}<a class="art sm" href="#e/{u.id}"><img src="icons/privileges/{u.id}.webp" alt="" loading="lazy"></a>
+                      {:else if u.kind === 'reform'}<span class="art sm"><img src="icons/reforms/{u.id}.webp" alt="" loading="lazy"></span>{/if}
+                      <div>
                       <div class="uh"><b title={u.desc}>{u.name}</b>
                         {#if grp.k === ''}<span class="tag">{u.kind}</span>{/if}
                         {#if u.estate}<span class="tag">{u.estate}</span>{/if}{#if u.law}<span class="tag">{u.law}</span>{/if}{#if u.age}<span class="tag">{u.age}</span>{/if}
                         {#if u.gated}<span class="tag gated" title="Needs something else first: an event, a decision or an advance">unlocked later</span>{/if}
                         {#if u.shared?.length}<i class="also">also {u.shared.map(shareName).join(', ')}</i>{/if}</div>
                       {#if u.mods.length}<div class="um">{#each u.mods as [l, v]}<span>{l} <b>{v}</b></span>{/each}</div>{/if}
+                      </div>
                     </div>
                   {/each}
                 </details>

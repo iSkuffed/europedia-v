@@ -209,7 +209,7 @@
       </div></div>
       {#each groupsShown as g (g.e.id)}
         <section class="card"><h4 class="gold">{g.e.name}<small>{g.list.length} privileges</small></h4>
-          {#if cards}<div class="pcards">{#each g.list as p (p.id)}
+          {#if cards}<div class="cardgrid">{#each g.list as p (p.id)}
             <a class="pcard" href="#e/{p.id}">
               <span class="art"><img src="icons/privileges/{p.id}.webp" alt="" loading="lazy">{#if p.who.length}<span class="dot t-{p.types[0] ?? 'other'}" title={p.whoText}></span>{/if}</span>
               <b class="pn">{p.name}</b>
@@ -270,18 +270,13 @@
 
   /* overview rows */
   .prow { display: grid; grid-template-columns: minmax(10em, 15em) minmax(0, 1fr) minmax(0, 24em); gap: 12px; align-items: center; padding: 5px 4px; border-top: 1px solid var(--line); }
-  .pcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 10px; padding: 8px 2px 4px; }
+  .cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px 10px; padding: 8px 2px 4px; }
   .pcard { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 4px; border-radius: 6px; text-align: center; }
   .pcard:hover { background: var(--panel2); }
   .pcard:hover .pn { color: var(--gold); }
   .pcard:hover .art { border-color: var(--frame-hi); box-shadow: 0 0 10px #d8b46a66, inset 0 0 0 1px #0008; transform: translateY(-2px); }
   .pcard .pn { font-weight: 600; font-size: 14px; line-height: 1.25; }
   .pcard .pe { color: var(--dim); font-size: 12px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-  /* the game's card: portrait art in a thin gilded frame */
-  .art { position: relative; flex: none; display: block; width: 96px; height: 135px; border: 2px solid var(--frame); border-radius: 7px; overflow: hidden;
-    background: #0d1117; box-shadow: 0 2px 6px #0009, inset 0 0 0 1px #0008; transition: transform .15s, box-shadow .15s, border-color .15s; }
-  .art img { display: block; width: 100%; height: 100%; object-fit: cover; }
-  .art .dot { position: absolute; top: 5px; right: 5px; width: 10px; height: 10px; border: 1px solid #000a; }
   .art.big { width: 116px; height: 163px; margin-right: 6px; }
   @media (prefers-reduced-motion: reduce) { .pcard:hover .art { transform: none; } }
   .prow:first-of-type { border-top: none; }

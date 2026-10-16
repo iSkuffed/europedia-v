@@ -5,7 +5,7 @@ An item is unique to a tag when its potential/allow-style condition requires `ta
 (directly, or in an OR of such). NOT/NOR/trigger_if are never read, so exclusions never count. More than MAXTAGS
 tags -> not unique, skipped. Items with no tag of their own but unlocked only by tag-locked advances are credited
 to those advances' tags (gated)."""
-import sys, os, json
+import sys, os, json, glob, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from eu5lib import *  # paths, loc, modifier formatting, tag conditions
 
@@ -185,6 +185,15 @@ OUTD = dict(sorted((t, v) for t, v in OUTD.items() if t in START))
 path = f'{OUT}/public/unique.json'
 with open(path, 'w', encoding='utf-8') as fh:
     json.dump(OUTD, fh, separators=(',', ':'), ensure_ascii=False)
+
+# card art for every reform (64x90, like privileges.py's): <icon or id>.dds, DLC ones under dlc/
+ART = {os.path.basename(f)[:-4]: f for d in (GAME, *glob.glob(f'{GAME}/dlc/*'))
+       for f in glob.glob(f'{d}/main_menu/gfx/interface/icons/government_reforms/illustrations/*.dds')}
+os.makedirs(f'{OUT}/public/icons/reforms', exist_ok=True)
+for rid, b in load('government_reforms').items():
+    dst = f'{OUT}/public/icons/reforms/{rid}.webp'
+    if not os.path.exists(dst):
+        subprocess.run(['magick', ART.get(get(b, 'icon') or rid, ART['_default']), '-strip', '-quality', '88', dst], check=True)
 
 if __name__ == '__main__':
     # restriction self-check: OR of tags, exclusions ignored, AND intersects, >MAXTAGS not an issue here
