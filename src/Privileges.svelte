@@ -30,7 +30,7 @@
   const TYPE_LABEL: Record<string, string> = {tag: 'Country', culture: 'Culture', religion: 'Religion', region: 'Region', government: 'Government', unlock: 'Unlock', other: 'Other', any: 'Any of', all: 'Everyone'};
   const AVAIL: [string, string][] = [['', 'Any'], ['all', 'Everyone'], ['tag', 'Country-specific'], ['culture', 'Culture'], ['religion', 'Religion'], ['region', 'Region'], ['other', 'Other']];
 
-  let filter = $state(''), estSel = $state<string[]>([]), avail = $state('');
+  let filter = $state(''), estSel = $state<string[]>([]), avail = $state(''), kind = $state('');
   let mainEl = $state<HTMLElement>();
   $effect(() => { id; mainEl?.scrollTo(0, 0); });
   const toggle = (e: MouseEvent) => (e.target as Element).closest('section.card > h4')?.parentElement!.classList.toggle('shut');
@@ -40,7 +40,7 @@
   const shown = $derived.by(() => {
     if (!D) return [];
     const q = filter.trim().toLowerCase();
-    return D.privileges.filter(p => (!estSel.length || estSel.includes(p.estate)) && (!avail || p.availability.includes(avail))
+    return D.privileges.filter(p => (!estSel.length || estSel.includes(p.estate)) && (!avail || p.availability.includes(avail)) && (!kind || (kind === 'all' ? p.availability.includes('all') : p.types.includes(kind)))
       && (!q || (p.name + ' ' + p.id + ' ' + p.estateName + ' ' + p.whoText + ' ' + p.groups.flatMap(g => g.mods.concat(g.estate).map(m => m[0])).join(' ')).toLowerCase().includes(q)));
   });
   const groupsShown = $derived(D ? D.estates.map(e => ({e, list: shown.filter(p => p.estate === e.id)})).filter(g => g.list.length) : []);
@@ -203,7 +203,9 @@
         <p class="desc">Every privilege you can grant an estate, {D.privileges.length} in all. Each trades the crown's power for estate favour; the page shows what it does, who is offered it
           (everyone, or only certain countries, cultures, religions, regions or governments) and what it takes to grant or revoke. Pick one on the left or open it from the lists below.</p>
         <div class="wline"><span class="flbl">Legend</span>
-          {#each ['all', 'tag', 'culture', 'religion', 'region', 'government', 'unlock', 'other'] as t}<span class="wb t-{t}">{t === 'all' ? 'Everyone' : TYPE_LABEL[t]}</span>{/each}</div>
+          {#each ['all', 'tag', 'culture', 'religion', 'region', 'government', 'unlock', 'other'] as t}<button class="wb t-{t}" class:on={kind === t} onclick={() => kind = kind === t ? '' : t}
+            title={kind === t ? 'Show all again' : t === 'all' ? 'Only privileges open to everyone' : `Only privileges with a ${TYPE_LABEL[t].toLowerCase()} condition`}>{t === 'all' ? 'Everyone' : TYPE_LABEL[t]}</button>{/each}
+          {#if kind}<span class="meta">{shown.length} shown</span>{/if}</div>
       </div></div>
       {#each groupsShown as g (g.e.id)}
         <section class="card"><h4 class="gold">{g.e.name}<small>{g.list.length} privileges</small></h4>
@@ -237,6 +239,9 @@
   .t-region { --c: #6fd0c4; } .t-government { --c: #82bde6; } .t-unlock { --c: #c4b48a; } .t-other { --c: #a39a84; } .t-any { --c: #a39a84; }
   .wb { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px 6px; margin: 2px 3px 2px 0; padding: 1px 8px; font-size: 13px; line-height: 1.5;
     color: var(--c); border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--c) 12%, #0d1117); }
+  button.wb { cursor: pointer; font-family: inherit; }
+  button.wb:hover { background: color-mix(in srgb, var(--c) 22%, #0d1117); }
+  button.wb.on { background: color-mix(in srgb, var(--c) 30%, #0d1117); border-color: var(--c); box-shadow: 0 0 6px color-mix(in srgb, var(--c) 45%, transparent); }
   .wb.neg { border-style: dashed; text-decoration: none; }
   .wb.neg .wn { text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--c) 60%, transparent); }
   .wb.der { border-style: dotted; }
