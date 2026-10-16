@@ -15,6 +15,24 @@ export interface NationData { locs: Loc[]; areas: string[]; countries: Record<st
 let cache: Promise<NationData> | undefined;
 export const loadNations = () => cache ??= fetch('nations.json').then(r => r.json());
 
+// public/unique.json (unique.py): reforms, privileges, laws, units, advances... locked to a few tags
+export interface Unique { kind: string; id: string; name: string; desc?: string; shared?: string[]; estate?: string; law?: string; age?: string; gated?: boolean; mods: [string, string][] }
+let uniqueCache: Promise<Record<string, Unique[]>> | undefined;
+export const loadUnique = () => uniqueCache ??= fetch('unique.json').then(r => r.ok ? r.json() : {});
+
+// public/map.png: one pixel per 8x8 map units, red * 256 + green = 0 water, 1 wasteland, i + 2 = locs[i]
+export const MAP_SCALE = 8;
+let mapCache: Promise<{w: number; h: number; c: Uint16Array}> | undefined;
+export const loadMap = () => mapCache ??= fetch('map.png').then(r => r.blob())
+  .then(b => createImageBitmap(b, {colorSpaceConversion: 'none', premultiplyAlpha: 'none'})).then(bm => {
+    const cv = document.createElement('canvas'), w = cv.width = bm.width, h = cv.height = bm.height;
+    const ctx = cv.getContext('2d', {willReadFrequently: true})!;
+    ctx.drawImage(bm, 0, 0);
+    const d = ctx.getImageData(0, 0, w, h).data, c = new Uint16Array(w * h);
+    for (let i = 0; i < c.length; i++) c[i] = d[4 * i] * 256 + d[4 * i + 1];
+    return {w, h, c};
+  });
+
 const {goods: G, buildings: B} = DATA;
 const W = 16384;  // the map wraps east-west
 export const dist = (a: Loc, b: Loc) => { const dx = Math.abs(a[2] - b[2]); return Math.hypot(Math.min(dx, W - dx), a[3] - b[3]); };

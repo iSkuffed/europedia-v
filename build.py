@@ -1,6 +1,6 @@
 """Extract EU5 production data into src/data.json for the app.
 Usage: python3 -I build.py [game_dir]"""
-import sys, os, glob, json, re, itertools, colorsys
+import sys, os, glob, json, re, itertools, colorsys, subprocess
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pdx import parse, get, items, num
 
@@ -521,6 +521,26 @@ for tag, _, b in get(get(setup('10_countries.txt'), 'countries'), 'countries'):
 for l in pos:  # every other land location with a raw good, unowned or not, so neighbours can be listed
     if get(tmpl.get(l, []), 'raw_material'):
         lidx(l)
+# a 1/8-scale map of locations for the nation page (public/map.png, north up, x wraps): each pixel's
+# red*256 + green is 0 for water, 1 for land with no entry above (wasteland), or i + 2 for locs[i]
+dmap = parse(open(f'{MAP}/default.map', encoding='utf-8-sig').read())
+water = {x for k in ('sea_zones', 'lakes') for _, _, x in get(dmap, k)}
+mcode = {}
+for f in glob.glob(f'{MAP}/named_locations/*.txt'):
+    for k, _, v in parse(open(f, encoding='utf-8-sig').read()):
+        mcode[bytes.fromhex(v.zfill(6))] = 0 if k in water else idx[k] + 2 if k in idx else 1
+MAP_SCALE = 8
+raw = subprocess.run(['magick', f'{MAP}/locations.png', '-sample', f'{100 / MAP_SCALE}%', 'rgb:-'], capture_output=True, check=True).stdout
+px = bytearray(len(raw))
+for i in range(0, len(raw), 3):
+    c = mcode.get(raw[i:i + 3], 1)
+    px[i], px[i + 1] = c >> 8, c & 255
+mw, mh = 16384 // MAP_SCALE, 8192 // MAP_SCALE
+subprocess.run(['magick', '-size', f'{mw}x{mh}', '-depth', '8', 'rgb:-', '-strip', '-define', 'png:color-type=2', '-define', 'png:compression-level=9',
+                f'{OUT}/public/map.png'], input=bytes(px), check=True)
+mx, mz = L[countries['MOS']['cap']][2:4]
+near = [3 * (((8192 - mz) // MAP_SCALE + dy) * mw + mx // MAP_SCALE + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+assert countries['MOS']['cap'] + 2 in [px[o] * 256 + px[o + 1] for o in near], 'map.png: Moscow is not at its locator'
 assert countries['MOS']['name'] == 'Muscovy' and L[countries['MOS']['cap']][0] == 'Moscow' and L[countries['MOS']['cap']][5] == 2 and countries['FRA']['color'] and countries['PSK']['over'][0] == 'NOV'
 with open(f'{OUT}/public/nations.json', 'w') as f:
     json.dump({'locs': L, 'areas': [name(a, a) for a in areas], 'countries': countries}, f, separators=(',', ':'), ensure_ascii=False)

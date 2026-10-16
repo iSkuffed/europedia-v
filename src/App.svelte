@@ -5,6 +5,7 @@
   import Nations from './Nations.svelte';
   import { DATA } from './lib/data';
   import { AGE, setAge } from './lib/age.svelte';
+  import { loadNations, type NationData } from './lib/nations';
   const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'], AGES = Object.keys(DATA.ages).map(Number);
 
   let side = $state<HTMLElement>(), main = $state<HTMLElement>(), search: HTMLInputElement;
@@ -13,7 +14,14 @@
   // the Production Chains page renders itself into the aside / main panes while it is shown
   $effect(() => { if (!isPops && !isNations && side && main) return untrack(() => mountProduction(side!, main!)); });
 
-  function go() { searchGo(search.value); search.value = ''; }
+  // nations join the search once it's first focused (their file is big)
+  let N = $state<NationData>();
+  const nationNames = $derived(N ? [...new Set(Object.values(N.countries).map(c => c.name))] : []);
+  function go() {
+    const q = search.value.trim().toLowerCase(), t = N && Object.keys(N.countries).find(t => N!.countries[t].name.toLowerCase() === q);
+    if (t) location.hash = `n/${t}`; else searchGo(search.value);
+    search.value = '';
+  }
   function focusSearch(e: KeyboardEvent) {
     if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); }
   }
@@ -24,8 +32,8 @@
 <header>
   <h1>Europedia V</h1>
   <nav><a href="#/" class:on={!isPops && !isNations}>Production Chains</a><a href="#pops" class:on={isPops}>Pops</a><a href="#n" class:on={isNations}>Nations</a></nav>
-  <input id="search" bind:this={search} onchange={go} placeholder="Search goods, buildings or pops…  (/)" list="names" autocomplete="off">
-  <datalist id="names">{#each searchNames as n}<option value={n}></option>{/each}</datalist>
+  <input id="search" bind:this={search} onchange={go} onfocus={() => loadNations().then(d => N = d)} placeholder="Search goods, buildings, pops or nations…  (/)" list="names" autocomplete="off">
+  <datalist id="names">{#each searchNames as n}<option value={n}></option>{/each}{#each nationNames as n}<option value={n}></option>{/each}</datalist>
   <div class="agesel" title="The age you are playing in: production shows what's available, pop demand includes that age's modifiers">
     <span class="flbl">Age</span>
     <button class="all" class:on={!AGE.v} onclick={() => setAge(null)}>All</button>
