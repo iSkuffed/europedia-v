@@ -1,19 +1,22 @@
 <script lang="ts">
   // Pops page: social classes, what each one buys, and what makes room for them / makes them promote.
   import { DATA, type PopSource } from './lib/data';
-  import { icon, fmt, gChip, bChip, pIcon, esc, KIND, signed, pctTxt, ROMAN } from './lib/production';
+  import { icon, fmt, gChip, bChip, pIcon, esc, KIND, signed, pctTxt, ROMAN, agePct } from './lib/production';
+  import { AGE } from './lib/age.svelte';
 
   let { id }: { id: string | null } = $props();
   const {goods: G, buildings: B, pops: P, cats: CATS, popInfo: PI} = DATA;
   const T = PI.types, POPS = Object.keys(T);
 
-  // base per-pop demand: (own + all + upper) x own multiplier x upper multiplier
+  // per-pop demand: (own + all + upper) x own multiplier x upper multiplier, then the chosen age's modifier
   function demand(g: string, p: string) {
     const {demand: a, demandMul: m} = G[g], up = T[p].upper;
-    return ((a[p] || 0) + (a.all || 0) + (up ? a.upper || 0 : 0)) * (m[p] ?? 1) * (up ? m.upper ?? 1 : 1);
+    const base = ((a[p] || 0) + (a.all || 0) + (up ? a.upper || 0 : 0)) * (m[p] ?? 1) * (up ? m.upper ?? 1 : 1);
+    return Math.max(0, base * (1 + agePct(g, AGE.v)));
   }
-  const wanted = Object.keys(G).filter(g => POPS.some(p => demand(g, p) > 0));
-  const colMax = Object.fromEntries(POPS.map(p => [p, Math.max(...wanted.map(g => demand(g, p)))]));
+  const wanted = $derived(Object.keys(G).filter(g => POPS.some(p => demand(g, p) > 0)));
+  const colMax = $derived(Object.fromEntries(POPS.map(p => [p, Math.max(...wanted.map(g => demand(g, p)))])));
+  const ageLabel = $derived(AGE.v ? `Age ${ROMAN[AGE.v]}: ${DATA.ages[AGE.v]}` : 'before age modifiers');
   let sortBy = $state<string | null>(null);
   const rows = $derived(sortBy ? [...wanted].sort((a, b) => demand(b, sortBy!) - demand(a, sortBy!)) : [...wanted].sort((a, b) => G[a].name.localeCompare(G[b].name)));
 
@@ -25,8 +28,11 @@
   const srcName = (s: PopSource) => s.kind === 'building_types' ? bChip(s.id)
     : `<span class="tag">${esc(s.tag || KIND[s.kind] || s.kind.replace(/_/g, ' ').replace(/s$/, ''))}</span> ${esc(s.name || s.id)}${s.age ? ` <i>(age ${ROMAN[s.age]})</i>` : ''}`;
   // sources whose modifiers match, buildings first, as [label, [key, value][]]
+  // sources that unlock after the chosen age go last, dimmed
+  const srcAge = (s: PopSource) => s.kind === 'building_types' ? B[s.id]?.age : s.age;
+  const later = (s: PopSource) => !!AGE.v && (srcAge(s) || 0) > AGE.v;
   const sourcesFor = (re: RegExp) => PI.sources.map(s => [s, Object.entries(s.mods).filter(([k]) => re.test(k))] as const).filter(([, m]) => m.length)
-    .sort(([a], [b]) => +(b.kind === 'building_types') - +(a.kind === 'building_types') || a.kind.localeCompare(b.kind));
+    .sort(([a], [b]) => +later(a) - +later(b) || +(b.kind === 'building_types') - +(a.kind === 'building_types') || a.kind.localeCompare(b.kind));
   const promotedFrom = (p: string) => POPS.filter(q => T[q].promoteTo.includes(p));
   const pLink = (p: string) => `<a class="chip" href="#p/${p}">${pIcon(p)}${esc(P[p])}</a>`;
   let mainEl = $state<HTMLElement>();
@@ -40,7 +46,7 @@
 
 {#snippet sources(list: ReturnType<typeof sourcesFor>)}
   {#each list as [s, ms]}
-    <div class="dm src"><span class="v">{#each ms as [k, v]}<span class={v > 0 === !k.includes('demotion') ? 'up' : 'down'} title={modName(k)}>{modVal(k, v)}</span>{/each}</span><span>{@html srcName(s)}{#if ms.length > 1 || !/desired_pop$|promotion_speed$|tribal_promotion$/.test(ms[0][0])}{' '}<i>{ms.map(([k]) => modName(k)).join(', ')}</i>{/if}</span></div>
+    <div class="dm src" class:later={later(s)} title={later(s) ? `Unlocks in age ${ROMAN[srcAge(s)!]}` : undefined}><span class="v">{#each ms as [k, v]}<span class={v > 0 === !k.includes('demotion') ? 'up' : 'down'} title={modName(k)}>{modVal(k, v)}</span>{/each}</span><span>{@html srcName(s)}{#if ms.length > 1 || !/desired_pop$|promotion_speed$|tribal_promotion$/.test(ms[0][0])}{' '}<i>{ms.map(([k]) => modName(k)).join(', ')}</i>{/if}</span></div>
   {/each}
 {/snippet}
 
@@ -66,7 +72,7 @@
         </div></div>
       </div>
       <div class="pcards">
-        <section class="card"><h4 class="pop">What they buy (per pop)</h4>
+        <section class="card"><h4 class="pop">What they buy (per pop, {ageLabel})</h4>
           {#each wanted.filter(g => demand(g, id!) > 0).sort((a, b) => demand(b, id!) - demand(a, id!)) as g}
             <div class="bar-row">{@html gChip(g)}<span class="bar"><span style="width:{100 * demand(g, id) / colMax[id]}%"></span></span><span class="n">{fmt(demand(g, id))}</span>{#if G[g].cond}<span class="tag" title="Demand changes with where they live: see the good's page">varies</span>{/if}</div>
           {:else}<p class="meta">No base demand.</p>{/each}
@@ -120,7 +126,7 @@
             <td class="n">{wanted.filter(g => demand(g, p) > 0).length}</td><td>{@html T[p].promoteTo.map(q => pIcon(q)).join('')}</td></tr>{/each}</tbody></table>
       </section>
       <div class="pgrid">
-      <section class="card"><h4 class="pop">Demand by class (per pop, before modifiers)</h4>
+      <section class="card"><h4 class="pop">Demand by class (per pop, {ageLabel})</h4>
         <p class="meta">Click a class to sort by it. Brighter cells mean more of what that class buys. Demand also grows with the location's development.</p>
         <div class="mtx-wrap"><table class="ptab mtx"><thead><tr><th><button onclick={() => sortBy = null} class:on={!sortBy}>Good</button></th>
           {#each POPS as p}<th><button onclick={() => sortBy = p} class:on={sortBy === p} title="Sort by {P[p]}">{@html pIcon(p)}</button></th>{/each}</tr></thead>

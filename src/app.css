@@ -234,3 +234,18 @@ table.ptab { border-collapse: collapse; width: 100%; }
 .pgrid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(360px, 1fr); gap: 16px; align-items: start; }
 .pside { display: flex; flex-direction: column; gap: 16px; }
 @media (max-width: 1250px) { .pgrid { grid-template-columns: minmax(0, 1fr); } }
+
+/* global age picker */
+.agesel { display: flex; align-items: center; gap: 3px; }
+.agesel .flbl { color: #d9c9a3; }
+.agesel button { font-family: var(--serif); cursor: pointer; color: var(--gold); width: 30px; height: 30px; border-radius: 50%; font-size: 13px; font-weight: 700;
+  border: 1px solid var(--frame); background: radial-gradient(circle at 40% 35%, #34503a, #16241b); box-shadow: inset 0 0 0 1px #000; text-shadow: 0 1px 1px #000; }
+.agesel button.all { width: auto; border-radius: 15px; padding: 0 8px; font-weight: 400; }
+.agesel button:hover { border-color: var(--frame-hi); }
+.agesel button.on { border: 2px solid var(--frame-hi); box-shadow: 0 0 8px #f0d58c99; background: radial-gradient(circle at 40% 35%, #7a6328, #3b2c10); color: #fff6d8; }
+.agesel .agename { color: var(--gold); font-size: 13px; margin-left: 4px; white-space: nowrap; }
+.ag.cur { border-color: var(--frame-hi); box-shadow: 0 0 6px #d8b46a66; }
+.dm.later { opacity: .45; }
+header nav a { white-space: nowrap; }
+#search { min-width: 200px; }
+@media (max-width: 1450px) { .agesel .agename, .agesel .flbl { display: none; } .legal { max-width: 230px; } }

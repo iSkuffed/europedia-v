@@ -1,5 +1,6 @@
 // Production Chains page: goods / buildings views rendered as HTML strings into the page shell.
 import { DATA, type Recipe } from './data';
+import { AGE } from './age.svelte';
 
 type Use = [bid: string, r: Recipe];  // a building running a recipe
 type Card = [body: string, heading: string, emptyText: string, cls?: string];  // cls 'big': gets a wider column
@@ -66,12 +67,12 @@ function recipeGroups(list: Use[]) {  // grouped under each building: inputs →
 
 // ---- chain trees -----------------------------------------------------------
 // ---- page filters (good pages only): age = what's available in that age, rec = recipe variant of the viewed good
-const F: {on: boolean; g: string | null; age: number | null; rec: number | null} = {on: false, g: null, age: null, rec: null};
+const F: {on: boolean; g: string | null; rec: number | null} = {on: false, g: null, rec: null};
 const obsoletedBy: Record<string, string[]> = {};
 for (const [bid, b] of Object.entries(B)) if (b.obsolete) (obsoletedBy[b.obsolete] ??= []).push(bid);
 // available in age A: unlocked by then and not already replaced by a newer tier that is also unlocked
 const availB = (bid: string, A: number) => B[bid].age <= A && !(obsoletedBy[bid] || []).some(o => B[o].age <= A);
-const okR = ([bid, r]: Use, A: number | null | false = F.on && F.age) => !A || (availB(bid, A) && (r.age || 1) <= A);
+const okR = ([bid, r]: Use, A: number | null = AGE.v) => !A || (availB(bid, A) && (r.age || 1) <= A);
 const matchesVariant = (r: Recipe, v: string[]) => v.every(i => i in r.in);
 function prod(g: string, A?: number) {
   let ps = (producers[g] || []).filter(p => okR(p, A));
@@ -234,18 +235,17 @@ const cards = (list: Card[]) => `<div class="masonry">${keep(list).map(([body, h
 export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
 function filterBar(g: string) {
   if (!producers[g]) return '';
-  const ages = Object.keys(DATA.ages).map(Number).map(a => {
-    const n = (producers[g] || []).filter(p => okR(p, a)).length;
-    return `<button class="age${F.age === a ? ' on' : ''}" data-f="age" data-v="${a}" ${n ? '' : 'disabled'}
-      title="Age ${ROMAN[a]}: ${esc(DATA.ages[a])}${n ? '' : ' — not producible yet'}">${ROMAN[a]}</button>`;
-  }).join('');
   const vs = variants(g);
   const recs = vs.length > 1 && vs.length <= 8 ? `<div class="fgroup"><span class="flbl">Recipe</span>${vs.map((v, k) =>
     `<button class="rec${F.rec === k ? ' on' : ''}" data-f="rec" data-v="${k}" title="${esc(v.map(i => G[i].name).join(' + '))}">${v.map(i => icon('goods', i, G[i].name)).join('')}</button>`).join('')}</div>` : '';
-  return `<div class="filters"><div class="fgroup"><span class="flbl">Age</span>${ages}</div>${recs}</div>`;
+  return recs && `<div class="filters">${recs}</div>`;
 }
 let keepScroll = false;
-const filterQuery = () => { const q = [F.age && `age=${F.age}`, F.rec != null && `rec=${F.rec}`].filter(Boolean).join('&'); return q ? '?' + q : ''; };
+const filterQuery = () => F.rec != null ? `?rec=${F.rec}` : '';
+// share every pop's demand for g changes by in age a (age modifiers apply only during their age)
+export const agePct = (g: string, a: number | null) => a ? [...(DATA.demandMods[g] || []), ...(DATA.demandMods['*'] || [])]
+  .filter(m => m.kind === 'age' && m.age === a).reduce((t, m) => t + m.pct!, 0) : 0;
+const AGE_NOTE = (a: number) => `Age ${ROMAN[a]}: ${esc(DATA.ages[a])}`;
 
 // upkeep users grouped by per-building amount, largest first
 function upkeepGroups(g: string, ms: Use[]) {
@@ -285,8 +285,9 @@ function conNote(g: string) {
 }
 
 // pop classes that buy this good, biggest consumer first and highlighted
-function popBar(x: {demand: Record<string, number>; demandMul: Record<string, number>}) {
-  const d = Object.entries(x.demand).sort((a, b) => b[1] - a[1]);
+function popBar(g: string) {
+  const x = G[g], f = 1 + agePct(g, AGE.v);  // the chosen age scales every pop's demand
+  const d = Object.entries(x.demand).map(([p, n]) => [p, Math.max(0, n * f)] as [string, number]).sort((a, b) => b[1] - a[1]);
   const m = Object.entries(x.demandMul).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
   if (!d.length && !m.length) return '';
   const pd = (p: string, txt: string, cls: string, tip: string) => `<span class="pd${cls}" title="${esc(pName(p) + tip)}">${pIcon(p)}<b>${txt}</b></span>`;
@@ -316,7 +317,7 @@ function demandShifts(g: string) {
   const cls = (n: number, base = 0) => n > base ? 'up' : n < base ? 'down' : '';
   const out: string[] = [];
   if (ages.length) out.push(`<div class="dsec">${term('By age')}<div class="ages">${ages.map(a =>
-    `<span class="ag" title="Age ${ROMAN[a.age!]}: ${esc(DATA.ages[a.age!])}"><b>${ROMAN[a.age!]}</b><span class="${cls(a.pct!)}">${pctTxt(a.pct!)}</span></span>`).join('')}</div></div>`);
+    `<span class="ag${a.age === AGE.v ? ' cur' : ''}" title="Age ${ROMAN[a.age!]}: ${esc(DATA.ages[a.age!])}"><b>${ROMAN[a.age!]}</b><span class="${cls(a.pct!)}">${pctTxt(a.pct!)}</span></span>`).join('')}</div></div>`);
   if (pcts.length) out.push(`<div class="dsec">${term('Modifiers')}${pcts.map(m => `<div class="dm"><span class="v ${cls(m.pct!)}">${pctTxt(m.pct!)}</span><span>${
     `<span class="tag">${esc(KIND[m.kind] || m.kind)}</span> ${esc(m.name)}${m.side ? ` <i>(leaning ${esc(m.side)})</i>` : ''}${'all' in m ? ' <i>(every good)</i>' : ''}`
     }${m.by?.length ? `<div class="by">from ${m.by.map(trig).join(', ')}</div>` : ''}</span></div>`).join('')}</div>`);
@@ -339,6 +340,15 @@ function demandShifts(g: string) {
   return out.join('');
 }
 
+// what the header's age means for this good: pop demand shift, and whether anything can make it yet
+function ageNote(g: string) {
+  const a = AGE.v;
+  if (!a) return '';
+  const p = agePct(g, a), ps = producers[g] || [];
+  return (p ? `<div class="cnote">${AGE_NOTE(a)} — every pop's demand <span class="${p > 0 ? 'up' : 'down'}">${pctTxt(p)}</span></div>` : '')
+    + (ps.length && !ps.some(x => okR(x)) ? `<div class="cnote">No building can make it yet in Age ${ROMAN[a]}.</div>` : '');
+}
+
 function goodView(g: string) {
   const x = G[g];
   const ps = prod(g), cs = cons(g), ms = (maint[g] || []).filter(p => okR(p)), ds = demandUse[g] || [];
@@ -350,7 +360,7 @@ function goodView(g: string) {
   made += recipeGroups(ps);
 
   const pops = Object.entries(x.demand).map(([p, n]) =>
-    `<tr><td>${pChip(p)}</td><td class="n">+${fmt(n)}</td></tr>`).join('');
+    `<tr><td>${pChip(p)}</td><td class="n">+${fmt(Math.max(0, n * (1 + agePct(g, AGE.v))))}</td></tr>`).join('');
   const muls = Object.entries(x.demandMul).map(([p, n]) =>
     `<tr><td>${pChip(p)}</td><td class="n">×${fmt(n)}</td></tr>`).join('');
 
@@ -365,7 +375,7 @@ function goodView(g: string) {
   };
   const unitDem = demCard(d => UNIT_CATS.has(D[d].cat)), dem = demCard(d => !UNIT_CATS.has(D[d].cat));
 
-  return `<div class="title lg">${icon('goods', g, x.name)}<div><h2>${esc(x.name)}</h2><div class="meta">${meta.map(m => `<span>${esc(m)}</span>`).join('')}</div>${conNote(g)}</div>${foodBar(g)}${conBar(g)}${popBar(x)}${filterBar(g)}</div>
+  return `<div class="title lg">${icon('goods', g, x.name)}<div><h2>${esc(x.name)}</h2><div class="meta">${meta.map(m => `<span>${esc(m)}</span>`).join('')}</div>${conNote(g)}${ageNote(g)}</div>${foodBar(g)}${conBar(g)}${popBar(g)}${filterBar(g)}</div>
   ${cards([
     [upChain(g), `<h4 class="in">Upstream — what it takes to make ${esc(x.name)}</h4>`, 'Raw material, extracted by RGOs.', 'big'],
     [downChain(g), `<h4 class="out">Downstream — what ${esc(x.name)} becomes</h4>`, 'Not processed into any other good.'],
@@ -387,7 +397,9 @@ function buildingView(bid: string) {
   const replaces = b.obsolete && B[b.obsolete] ? bChip(b.obsolete) : '';
   const replacedBy = Object.entries(B).filter(([, o]) => o.obsolete === bid).map(([k]) => bChip(k)).join('');
   const meta = [CATS[b.cat] || b.cat, b.pop ? `Employs ${P[b.pop] || b.pop}` : '', b.foreign ? 'Can be built abroad' : ''].filter(Boolean);
-  const restrict = reqLines(b).map(([k, v]) => `<div class="cnote"><span class="tag">${esc(k)}</span>${esc(v)} only</div>`).join('')
+  const later = AGE.v && !availB(bid, AGE.v) ? (b.age > AGE.v ? `Unlocks in Age ${ROMAN[b.age]} (${esc(DATA.ages[b.age])}).`
+    : `Replaced by ${(obsoletedBy[bid] || []).filter(o => B[o].age <= AGE.v!).map(o => esc(B[o].name)).join(', ')} by Age ${ROMAN[AGE.v]}.`) : '';
+  const restrict = (later ? `<div class="cnote">${later}</div>` : '') + reqLines(b).map(([k, v]) => `<div class="cnote"><span class="tag">${esc(k)}</span>${esc(v)} only</div>`).join('')
     + (b.event ? `<div class="cnote">${EVENT_NOTE}</div>` : '');
   const cost = buildCost(b), build = cost ? Object.entries(cost.in).map(([g, n]) => gChip(g, n)).join('') : '';
   return `<div class="title lg">${icon('buildings', bid, b.name)}<div><h2>${esc(b.name)}</h2><div class="meta">${meta.map(m => `<span>${esc(m)}</span>`).join('')}</div>${restrict}</div></div>
@@ -461,11 +473,8 @@ function route(side: HTMLElement, main: HTMLElement) {
   const [t, id] = path.split('/');
   const qs = new URLSearchParams(query);
   EMPTY = [];
-  // filters come from the URL (?age=&rec=); age carries over when following plain links to other goods
-  if (t === 'g') {
-    F.rec = qs.has('rec') ? +qs.get('rec')! : null;
-    if (qs.has('age') || id === F.g) F.age = qs.has('age') ? +qs.get('age')! : null;
-  }
+  // the recipe filter comes from the URL (?rec=); the age is the global one from the header
+  if (t === 'g') F.rec = qs.has('rec') ? +qs.get('rec')! : null;
   F.on = t === 'g'; F.g = t === 'g' ? id : F.g;
   const body = t === 'g' && G[id] ? goodView(id) : t === 'b' && B[id] ? buildingView(id) : overview();
   main.innerHTML = `<div class="view">${body}${EMPTY.length ? `<div class="empty-note">${EMPTY.map(e => `<span>${e}</span>`).join('')}</div>` : ''}</div>`;
@@ -486,19 +495,21 @@ export function mountProduction(side: HTMLElement, main: HTMLElement) {
     if (h) return h.parentElement!.classList.toggle('shut');
     const b = t.closest<HTMLElement>('button[data-f]');
     if (!b) return;
-    const k = b.dataset.f as 'age' | 'rec', v = +b.dataset.v!;
-    F[k] = F[k] === v ? null : v;  // click the active one again to clear
+    const v = +b.dataset.v!;
+    F.rec = F.rec === v ? null : v;  // click the active one again to clear
     keepScroll = true;
     location.hash = `g/${F.g}` + filterQuery();
   };
   let resizeT: ReturnType<typeof setTimeout>;
   const onResize = () => { clearTimeout(resizeT); resizeT = setTimeout(() => layoutMasonry(main), 100); };
   const onHash = () => route(side, main);
+  const onAge = () => { keepScroll = true; route(side, main); };
   main.addEventListener('click', onClick);
   addEventListener('resize', onResize);
   addEventListener('hashchange', onHash);
+  addEventListener('agechange', onAge);
   route(side, main);
-  return () => { main.removeEventListener('click', onClick); removeEventListener('resize', onResize); removeEventListener('hashchange', onHash); };
+  return () => { main.removeEventListener('click', onClick); removeEventListener('resize', onResize); removeEventListener('hashchange', onHash); removeEventListener('agechange', onAge); };
 }
 
 // ---- search ----------------------------------------------------------------
