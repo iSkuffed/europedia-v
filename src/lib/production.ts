@@ -6,24 +6,24 @@ type Card = [body: string, heading: string, emptyText: string, cls?: string];  /
 
 const {goods: G, buildings: B, demands: D, pops: P, cats: CATS, units: U, demandRefs: DREF} = DATA;
 const HAS = Object.fromEntries(Object.entries(DATA.icons).map(([k, v]) => [k, new Set(v)]));
-const fmt = (n: number | null | undefined) => n == null ? '' : (Math.abs(n) < 0.01 ? +n.toPrecision(2) : +n.toFixed(3)).toString();  // keep tiny demands readable
+export const fmt = (n: number | null | undefined) => n == null ? '' : (Math.abs(n) < 0.01 ? +n.toPrecision(2) : +n.toFixed(3)).toString();  // keep tiny demands readable
 export const esc = (s: unknown) => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]!));
 
-function icon(kind: string, id: string, label: string) {
+export function icon(kind: string, id: string, label: string) {
   if (HAS[kind]?.has(id)) return `<img class="ic" src="icons/${kind}/${id}.png" alt="" title="${esc(label)}">`;
   const ab = label.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   return `<span class="ic-fb ${kind === 'buildings' ? 'b' : ''}" title="${esc(label)}">${esc(ab)}</span>`;
 }
-const gChip = (g: string, n?: number) => `<a class="chip" href="#g/${g}">${icon('goods', g, G[g]?.name || g)}${esc(G[g]?.name || g)}${n != null ? ` <span class="n">${fmt(n)}</span>` : ''}</a>`;
+export const gChip = (g: string, n?: number) => `<a class="chip" href="#g/${g}">${icon('goods', g, G[g]?.name || g)}${esc(G[g]?.name || g)}${n != null ? ` <span class="n">${fmt(n)}</span>` : ''}</a>`;
 // compact: icon + amount, name in tooltip (for dense recipe lines)
 const gIco = (g: string, n?: number) => `<a class="chip ico" href="#g/${g}" title="${esc(G[g]?.name || g)}">${icon('goods', g, G[g]?.name || g)}${n != null ? `<span class="n">${fmt(n)}</span>` : ''}</a>`;
-const bChip = (b: string) => `<a class="chip" href="#b/${b}">${icon('buildings', b, B[b].name)}${esc(B[b].name)}</a>`;
+export const bChip = (b: string) => `<a class="chip" href="#b/${b}">${icon('buildings', b, B[b].name)}${esc(B[b].name)}</a>`;
 const uChip = (u: string) => `<span class="chip" title="${esc(U[u].age ? U[u].age.replace(/^age_\d_/, '').replace(/_/g, ' ') + ' age' : '')}">${icon('units', U[u].cat, U[u].name)}${esc(U[u].name)}</span>`;
 // demand groups that aren't a single pop type get the game's generic icons
 const PGROUP: Record<string, [string, string]> = {all: ['all_pops', 'All pops'], upper: ['strata', 'Upper strata']};
-const pName = (p: string) => PGROUP[p]?.[1] || P[p] || p;
-const pIcon = (p: string) => PGROUP[p] ? `<img class="ic" src="icons/misc/${PGROUP[p][0]}.png" alt="${esc(pName(p))}">` : icon('pops', p, pName(p));
-const pChip = (p: string) => `<span class="chip">${pIcon(p)}${esc(pName(p))}</span>`;
+export const pName = (p: string) => PGROUP[p]?.[1] || P[p] || p;
+export const pIcon = (p: string) => PGROUP[p] ? `<img class="ic" src="icons/misc/${PGROUP[p][0]}.png" alt="${esc(pName(p))}">` : icon('pops', p, pName(p));
+const pChip = (p: string) => P[p] ? `<a class="chip" href="#p/${p}">${pIcon(p)}${esc(pName(p))}</a>` : `<span class="chip">${pIcon(p)}${esc(pName(p))}</span>`;
 
 // ---- indexes ---------------------------------------------------------------
 const producers: Record<string, Use[]> = {}, consumers: Record<string, Use[]> = {}, maint: Record<string, Use[]> = {}, demandUse: Record<string, string[]> = {};
@@ -169,6 +169,7 @@ const TERMS: Record<string, string> = {
   'By age': 'Every pop\'s demand for this good changes by this much in each age.',
   'Modifiers': 'Changes how much every pop in your country wants this good while you have it. +100% means double.',
   'Culture & religion': 'Pops of these cultures or religions want this many times the normal amount. ×0 means they don\'t buy it at all. Clergy only means just their clergy.',
+  'Where': 'Pop demand for this good is multiplied by where the pops live: winters, climate, terrain, or part of the world.',
   'Events': 'These events add demand for this good to a market for a while. The number is the extra amount bought.',
   'By building': 'No input is shared by every recipe, so each building\'s recipes are shown in full. Buildings on the same row use the same recipes. "or" means the building can run either recipe.',
 };
@@ -230,7 +231,7 @@ function downChain(g: string, depth = 3) {
 let EMPTY: string[] = [];
 const keep = (list: Card[]) => { EMPTY.push(...list.filter(c => !c[0]).map(c => c[2])); return list.filter(c => c[0]); };
 const cards = (list: Card[]) => `<div class="masonry">${keep(list).map(([body, h, , cls]) => `<section class="card${cls ? ' ' + cls : ''}">${h}${body}</section>`).join('')}</div>`;
-const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
+export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
 function filterBar(g: string) {
   if (!producers[g]) return '';
   const ages = Object.keys(DATA.ages).map(Number).map(a => {
@@ -295,14 +296,16 @@ function popBar(x: {demand: Record<string, number>; demandMul: Record<string, nu
 }
 
 // ---- what changes pop demand ------------------------------------------------
-const KIND: Record<string, string> = {
+export const KIND: Record<string, string> = {
   government_reforms: 'Government reform', religious_aspects: 'Religious aspect', societal_values: 'Societal value',
   industry_types: 'Promote Industry', modifier: 'Modifier', culture_groups: 'Culture group', cultures: 'Culture',
   religion_groups: 'Religion group', religions: 'Religion', events: 'Event', decisions: 'Decision', on_action: 'Game event',
 };
-const signed = (n: number, unit = '') => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${fmt(Math.abs(n))}${unit}`;
-const pctTxt = (p: number) => signed(Math.round(p * 100), '%');
+export const signed = (n: number, unit = '') => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${fmt(Math.abs(n))}${unit}`;
+export const pctTxt = (p: number) => signed(Math.round(p * 100), '%');
 const trig = (t: {kind: string; name: string; tag?: string}) => `${t.tag ? `<span class="tag">${esc(t.tag)}</span>` : `<span class="tag">${esc(KIND[t.kind] || t.kind)}</span>`} ${esc(t.name)}`;
+const COND = {only: 'Only in', winter: 'Winter', climate: 'Climate', topography: 'Terrain', continent: 'Continent', sub_continent: 'Subcontinent',
+  region: 'Region', disease: 'Disease', literacy: 'Literacy', market_unavailability: 'Unavailable'};
 function demandShifts(g: string) {
   const mods = [...(DATA.demandMods[g] || []), ...(DATA.demandMods['*'] || []).map(m => ({...m, all: true}))];
   const ages = mods.filter(m => m.kind === 'age').sort((a, b) => a.age! - b.age!);
@@ -324,6 +327,13 @@ function demandShifts(g: string) {
       `<div class="dm"><span class="v ${cls(ms[0].mul!, 1)}">×${fmt(ms[0].mul!)}</span><span>${ms[0].clergy ? `${pIcon('clergy')} <i>clergy only:</i> ` : ''}${
         ms.map(m => `${esc(m.name)} <span class="kd">${esc(KIND[m.kind])}</span>`).join(', ')}</span></div>`).join('')}</div>`);
   }
+  const c = G[g].cond;
+  if (c) out.push(`<div class="dsec">${term('Where')}${Object.entries(COND).filter(([k]) => c[k as keyof typeof c]).map(([k, label]) => {
+    const v = c[k as keyof typeof c]!;
+    const txt = Array.isArray(v) ? v.map(esc).join(', ') : typeof v === 'number' ? `×${fmt(v)}`
+      : Object.entries(v).map(([w, n]) => `${esc(w)} <span class="${cls(n, 1)}">×${fmt(n)}</span>`).join(' · ');
+    return `<div class="dm"><span class="v">${esc(label)}</span><span>${txt}</span></div>`;
+  }).join('')}</div>`);
   if (events.length) out.push(`<div class="dsec">${term('Events')}${chipList(events.map(e =>
     `<div class="dm ev"><span class="v up">${signed(e.amt)}</span><span>${trig(e)}${e.months ? ` <i>for ${e.months} months</i>` : ''}</span></div>`), 10)}</div>`);
   return out.join('');
@@ -492,12 +502,13 @@ export function mountProduction(side: HTMLElement, main: HTMLElement) {
 }
 
 // ---- search ----------------------------------------------------------------
-export const searchNames = [...Object.values(G).map(x => x.name), ...Object.values(B).map(b => b.name)];
+export const searchNames = [...Object.values(G).map(x => x.name), ...Object.values(B).map(b => b.name), ...Object.values(P)];
 export function searchGo(raw: string) {
   const q = raw.trim().toLowerCase();
   const g = Object.keys(G).find(k => G[k].name.toLowerCase() === q) || Object.keys(G).find(k => G[k].name.toLowerCase().includes(q));
   const b = !g && (Object.keys(B).find(k => B[k].name.toLowerCase() === q) || Object.keys(B).find(k => B[k].name.toLowerCase().includes(q)));
-  if (g) location.hash = `g/${g}`; else if (b) location.hash = `b/${b}`;
+  const p = Object.keys(P).find(k => P[k].toLowerCase() === q);
+  if (p) location.hash = `p/${p}`; else if (g) location.hash = `g/${g}`; else if (b) location.hash = `b/${b}`;
 }
 
 // ---- tooltip content: rich cards for goods / buildings ------------------------

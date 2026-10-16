@@ -21,6 +21,37 @@ export interface Good {
   demand: Record<string, number>;     // pop type (or 'all' / 'upper') -> demand per pop
   demandMul: Record<string, number>;
   slave: boolean;
+  cond?: GoodCond;  // where pop demand for it is scaled up or down
+}
+// condition -> place / severity -> demand multiplier
+export interface GoodCond {
+  winter?: Record<string, number>; climate?: Record<string, number>; topography?: Record<string, number>;
+  continent?: Record<string, number>; sub_continent?: Record<string, number>; region?: Record<string, number>;
+  only?: string[];  // demanded only in these areas
+  disease?: number; literacy?: number; market_unavailability?: number;
+}
+export interface PopType {
+  desc: string;
+  estate: string | null;
+  upper: boolean;
+  cap: boolean;       // their number is limited by "Possible X" (desired pop) in a location
+  power: number | null;  // estate power per pop
+  tax: number | null;    // estate tax base per pop
+  food: number;
+  promoteTo: string[];
+  promo: number | null;  // promotion factor
+  migration: number | null;
+  assim: number | null;  // assimilation / conversion factor
+  literacy: [string, number | null][];  // what their literacy gives the location
+  share: [string, number | null][];     // what their share of the population gives
+}
+export interface PopSource { kind: string; id: string; name?: string; mods: Record<string, number>; age?: number; tag?: string }
+export interface PopInfo {
+  types: Record<string, PopType>;
+  ranks: {id: string; name: string; mods: Record<string, number>; minPop: number | null}[];  // rural settlement -> megalopolis
+  base: Record<string, number>;  // every location
+  sources: PopSource[];  // buildings, advances, laws... that make room for pops or change promotion speed
+  modNames: Record<string, string>;
 }
 export interface Building {
   name: string;
@@ -58,6 +89,7 @@ export interface DemandMod {
 export interface Trigger { kind: string; id: string; name: string; tag?: string }  // event / decision / on_action
 export interface TempDemand extends Trigger { months: number | null; scale: number }
 export interface Data {
+  popInfo: PopInfo;
   demandMods: Record<string, DemandMod[]>;  // good ('*' = every good) -> modifiers
   tempDemand: Record<string, TempDemand[]>;  // goods_demand id -> events that add it to a market for a while
   ages: Record<string, string>;

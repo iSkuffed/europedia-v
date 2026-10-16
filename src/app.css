@@ -205,3 +205,32 @@ a.tag:hover { color: var(--gold); border-color: var(--frame); }
 .dm i, .dm .by { color: var(--dim); font-size: 12px; }
 .dm .kd { color: var(--dim); font-size: 11px; }
 .dm img.ic { width: 18px; height: 18px; vertical-align: middle; }
+
+/* pops page */
+header nav { display: flex; gap: 4px; }
+.desc { margin: 6px 0 0; max-width: 820px; color: var(--text); }
+.pcards { columns: 380px; column-gap: 16px; margin-bottom: 16px; }
+.pcards > .card { break-inside: avoid; margin-bottom: 16px; }
+main > .card { margin-bottom: 16px; }
+.blist .up-tag { margin-left: auto; }
+table.ptab { border-collapse: collapse; width: 100%; }
+.ptab th { font-weight: 600; font-size: 12px; color: var(--gold); text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--frame); }
+.ptab td { padding: 2px 6px; border-top: 1px solid var(--line); }
+.ptab td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.ptab img.ic { width: 22px; height: 22px; vertical-align: middle; }
+.mtx-wrap { overflow-x: auto; }
+.mtx th { text-align: center; }
+.mtx th button { background: none; border: 1px solid transparent; border-radius: 3px; color: var(--gold); cursor: pointer; padding: 2px 4px; }
+.mtx th button.on, .mtx th button:hover { border-color: var(--frame-hi); background: #0006; }
+.mtx td.n { min-width: 64px; }
+.bar-row { display: grid; grid-template-columns: minmax(0, 11em) 1fr 4.5em auto; align-items: center; gap: 6px; border-top: 1px solid var(--line); padding: 1px 0; }
+.bar-row:first-of-type { border-top: none; }
+.bar-row .chip { overflow: hidden; }
+.bar { height: 8px; background: #0d1117; border: 1px solid var(--line); border-radius: 2px; }
+.bar > span { display: block; height: 100%; background: linear-gradient(90deg, #4f7d3a, var(--out)); }
+.bar-row .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--out); }
+.dm.src .v { display: flex; flex-direction: column; }
+.dsec .flbl { display: block; margin-bottom: 2px; }
+.pgrid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(360px, 1fr); gap: 16px; align-items: start; }
+.pside { display: flex; flex-direction: column; gap: 16px; }
+@media (max-width: 1250px) { .pgrid { grid-template-columns: minmax(0, 1fr); } }

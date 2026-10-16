@@ -370,7 +370,73 @@ for d in ('culture_groups', 'cultures', 'religion_groups', 'religions'):
             for g, n in amounts(get(v, key) or []).items():
                 add_mod(g, {'kind': d, 'id': k, 'name': name(k, k), 'mul': n, 'clergy': clergy})
 
-data = {'demandMods': demand_mods, 'tempDemand': temp_demand, 'ages': ages, 'units': units, 'demandRefs': demand_refs, 'goods': goods, 'buildings': buildings, 'demands': demands, 'pops': pops, 'cats': cats,
+# ---- pops: social classes, where they come from, what makes room for them -------------------
+def text(s):  # concept text: [pops|e] -> pops, [ShowPopTypeName('burghers')] -> Burghers
+    s = re.sub(r"\[Show\w*?Name\w*\('(\w+)'\)\]", lambda m: pops.get(m.group(1)) or name(m.group(1), m.group(1)), resolve(s))
+    s = re.sub(r'\[(\w+)\|\w+\]', lambda m: clean(loc.get(m.group(1), m.group(1).replace('_', ' '))).lower(), s)
+    return clean(re.sub(r'\[[^\]]*\]', '…', s))
+
+
+mod_name = lambda k: text(loc[f'MODIFIER_TYPE_NAME_{k}']) if f'MODIFIER_TYPE_NAME_{k}' in loc else k.replace('_', ' ').capitalize()
+estates = load('estates')
+pop_types = {}
+for p, v in load('pop_types').items():
+    est = next((k for k, _, b in v if k and k.endswith('_estate') and b == []), None)
+    pop_types[p] = {
+        'desc': text(loc.get(f'{p}_desc', '')), 'estate': est and name(est, est),
+        'upper': get(v, 'upper') == 'yes', 'cap': get(v, 'has_cap') == 'yes', 'power': num(get(v, 'power_per_pop')),
+        'tax': num(get(estates.get(est) or [], 'tax_per_pop')), 'food': num(get(v, 'pop_food_consumption')) or 0,
+        'promoteTo': [x for k, _, x in v if k == 'promote_to'],
+        'promo': num(get(v, 'promotion_factor')), 'migration': num(get(v, 'migration_factor')),
+        'assim': num(get(v, 'assimilation_conversion_factor')),
+        'literacy': [[mod_name(k), val(x)] for k, x in items(get(v, 'literacy_impact') or [])],
+        'share': [[mod_name(k), val(x)] for k, x in items(get(v, 'pop_percentage_impact') or [])],
+    }
+
+# modifier keys that make room for a pop type or move pops between types
+POP_KEY = re.compile(r'(local|global)_(\w+?)_(?:(city|rural)_)?desired_pop(_scaled)?$|(local|global)_pop_(promotion|demotion)_speed(_modifier)?$|local_tribal_promotion$')
+pop_keys = lambda blk: {k: val(x) for k, x in leaves(blk) if POP_KEY.match(k) and val(x) is not None}
+ranks = []
+for k, v in load('location_ranks').items():
+    allow = get(v, 'allow') or []
+    ranks.append({'id': k, 'name': name(k, k), 'mods': pop_keys(get(v, 'rank_modifier') or []),
+                  'minPop': next((num(x) for kk, op, x in allow if kk == 'population' and op == '>='), None)})
+base = {}
+for f, k, v in tree(f'{MM}/static_modifiers'):
+    if k == 'location_base_values':
+        base = pop_keys(v)
+pop_sources = [{'kind': 'building_types', 'id': k, 'mods': m} for k, v in load('building_types').items() if (m := pop_keys(v))]
+for d in sorted(os.listdir(C)):
+    if not os.path.isdir(f'{C}/{d}') or d in ('building_types', 'location_ranks', 'pop_types', 'goods', 'production_methods'):
+        continue
+    for k, v in load(d).items():
+        if m := pop_keys(v):
+            e = {'kind': d, 'id': k, 'name': text(loc[k]) if k in loc else name(k, k), 'mods': m}
+            if d == 'advances' and get(v, 'age'):
+                e['age'] = age_no(get(v, 'age'))
+            if d in ('advances', 'laws', 'estate_privileges') and (m := re.match(r'([a-z]{3})_', k)) and m.group(1).upper() in loc:  # hun_strengthened_towns -> Hungary only
+                e['tag'] = clean(loc[m.group(1).upper()])
+            pop_sources.append(e)
+pop_info = {'types': pop_types, 'ranks': ranks[::-1], 'base': base, 'sources': pop_sources,
+            'modNames': {k: mod_name(k) for s in [base, *[r['mods'] for r in ranks], *[s['mods'] for s in pop_sources]] for k in s}}
+
+# conditions that scale a good's pop demand (winter, climate, region...) or limit it to one area
+COND = ('winter', 'climate', 'topography', 'continent', 'sub_continent', 'region')
+for gid, b in goods_raw.items():
+    cond = {c: {name(k, k): num(x) for k, x in items(get(b, f'{c}_demand_modifier') or [])} for c in COND}
+    cond = {c: x for c, x in cond.items() if x}
+    only = [name(x, x) for k, _, x in b if k and k.startswith('demand_only_in_')]
+    if only:
+        cond['only'] = only
+    for k in ('disease', 'market_unavailability'):
+        if num(get(b, f'{k}_demand_modifier')):
+            cond[k] = num(get(b, f'{k}_demand_modifier'))
+    if num(get(b, 'literacy_demand_factor')):
+        cond['literacy'] = num(get(b, 'literacy_demand_factor'))
+    if cond:
+        goods[gid]['cond'] = cond
+
+data = {'popInfo': pop_info, 'demandMods': demand_mods, 'tempDemand': temp_demand, 'ages': ages, 'units': units, 'demandRefs': demand_refs, 'goods': goods, 'buildings': buildings, 'demands': demands, 'pops': pops, 'cats': cats,
         'icons': {d: sorted(os.path.splitext(f)[0] for f in os.listdir(os.path.join(OUT, 'public', 'icons', d)))
                   for d in ('goods', 'buildings', 'pops', 'units') if os.path.isdir(os.path.join(OUT, 'public', 'icons', d))}}
 
@@ -392,3 +458,6 @@ assert len(jg) == 12 and any(r['in'] == {'goods_gold': 0.5208, 'gems': 0.1042} a
 assert any(m.get('mul') == 4 and m['id'] == 'andean_group' for m in demand_mods['potato'])
 assert [m['pct'] for m in demand_mods['tobacco'] if m['kind'] == 'age'] == [-0.75, -0.75, -0.25, 0.5, 1.0, 1.5]
 assert any(a['id'] == 'anglican_events.11' for m in demand_mods['fine_cloth'] if m['kind'] == 'modifier' for a in m['by'])
+assert pop_info['types']['peasants']['promoteTo'] == ['burghers', 'clergy', 'nobles', 'laborers', 'soldiers']
+assert [r['id'] for r in pop_info['ranks']] == ['rural_settlement', 'town', 'city', 'megalopolis'] and pop_info['ranks'][2]['minPop'] == 30
+assert pop_info['base']['local_nobles_desired_pop_scaled'] == 0.0025 and goods['camels']['cond']['only'][-1] == 'Western India'
