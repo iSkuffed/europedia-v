@@ -43,7 +43,7 @@ for (const d in unitsBy) {
 }
 const UNIT_CATS = new Set(['regiment_construction', 'regiment_maintenance', 'ship_construction', 'ship_maintenance', 'ship_repair']);
 const chipList = (chips: string[], max = 8) => chips.length <= max ? chips.join('')
-  : chips.slice(0, max).join('') + `<details style="display:inline"><summary class="tag" style="display:inline">+${chips.length - max} more</summary>${chips.slice(max).join('')}</details>`;
+  : chips.slice(0, max).join('') + `<details style="display:inline"><summary class="tag more" style="display:inline">+${chips.length - max} more</summary>${chips.slice(max).join('')}</details>`;
 // who uses a goods_demand entry: buildings (construction), unit types, or other script objects (laws, orders…)
 const demandUsers = (d: string) => [...(buildBy[d] || []).map(bChip), ...(unitsBy[d] || []).map(uChip),
   ...(DREF[d] || []).map(r => `<span class="chip"><span class="tag">${esc(r.f.replace(/_/g, ' '))}</span>${esc(r.name)}</span>`)];

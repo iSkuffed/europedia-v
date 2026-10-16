@@ -71,7 +71,7 @@
 {#snippet sources(list: ReturnType<typeof sourcesFor>, plain = /desired_pop$|promotion_speed$|tribal_promotion$/, max = 0)}
   {#if max && list.length > max + 3}
     {@render sources(list.slice(0, max), plain)}
-    <details><summary>{list.length - max} more</summary>{@render sources(list.slice(max), plain)}</details>
+    <details><summary class="more">{list.length - max} more</summary>{@render sources(list.slice(max), plain)}</details>
   {:else}{#each list as [s, ms]}
     <div class="dm src" class:later={later(s)} title={later(s) ? `Unlocks in age ${ROMAN[srcAge(s)!]}` : undefined}><span class="v">{#each ms as [k, v]}<span class={bad(k, v) ? 'down' : 'up'} title={modName(k)}>{modVal(k, v)}</span>{/each}</span><span>{#if ms.length > 1 || !plain.test(ms[0][0])}<i class="mk">{ms.map(([k]) => modName(k)).join(', ')}</i>{/if}{@html srcName(s)}</span></div>
   {/each}{/if}
