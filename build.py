@@ -1,6 +1,6 @@
 """Extract EU5 production data into src/data.json for the app.
 Usage: python3 -I build.py [game_dir]"""
-import sys, os, glob, json, re, itertools
+import sys, os, glob, json, re, itertools, colorsys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pdx import parse, get, items, num
 
@@ -455,6 +455,75 @@ for gid, b in goods_raw.items():
         cond['literacy'] = num(get(b, 'literacy_demand_factor'))
     if cond:
         goods[gid]['cond'] = cond
+
+# ---- nations at the 1337 start: owned locations, their raw goods and map positions -> public/nations.json
+SETUP, MAP = f'{GAME}/main_menu/setup/1337', f'{GAME}/in_game/map_data'
+setup = lambda f: parse(open(f'{SETUP}/{f}', encoding='utf-8-sig').read())
+pos = {m[0]: (round(float(m[1])), round(float(m[2]))) for m in re.findall(
+    r'id=(\w+)\s*position=\{ ([\d.]+) [-\d.]+ ([\d.]+)', open(f'{GAME}/in_game/gfx/map/map_objects/generated_locators_city.txt').read())}
+tmpl = {k: v for k, _, v in parse(open(f'{MAP}/location_templates.txt', encoding='utf-8-sig').read())}
+area_of = {}
+def walk(b, path):
+    for k, _, v in b:
+        if isinstance(v, list):
+            walk(v, path + [k])
+        elif k is None and len(path) >= 4:
+            area_of[v] = path[3]  # continent > sub-continent > region > area > province > location
+walk(parse(open(f'{MAP}/definitions.txt', encoding='utf-8-sig').read()), [])
+ranks = {k: get(v, 'rank') for k, _, v in get(setup('07_cities_and_buildings.txt'), 'locations') or [] if isinstance(v, list) and get(v, 'rank')}
+loc_pops = {k: [(get(d, 'type'), get(d, 'culture'), get(d, 'religion'), num(get(d, 'size')) or 0) for x, _, d in v if x == 'define_pop']
+            for k, _, v in get(setup('06_pops.txt'), 'locations') or [] if isinstance(v, list)}  # location -> [(type, culture, religion, thousands)]
+def rgb(kind, a, b, c):
+    a, b, c = float(a), float(b), float(c)
+    if kind == 'rgb':
+        return [round(a), round(b), round(c)]
+    h, s, v = (a / 360, b / 100, c / 100) if kind == 'hsv360' else (a, b, c)
+    return [round(x * 255) for x in colorsys.hsv_to_rgb(h, s, v)]
+colors = {m[0]: rgb(*m[1:]) for f in glob.glob(f'{MM}/named_colors/*.txt')
+          for m in re.findall(r'(\w+)\s*=\s*(rgb|hsv360|hsv)\s*\{\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)', open(f, encoding='utf-8-sig').read())}
+ccol = {}
+for f in glob.glob(f'{GAME}/in_game/setup/countries/*.txt'):
+    for k, _, v in parse(open(f, encoding='utf-8-sig').read()):
+        c = isinstance(v, list) and get(v, 'color')
+        if isinstance(c, str) and c in colors:
+            ccol[k] = colors[c]
+    for m in re.findall(r'^(\w+)\s*=\s*\{\s*color\s*=\s*(rgb|hsv360|hsv)\s*\{\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)', open(f, encoding='utf-8-sig').read(), re.M):
+        ccol[m[0]] = rgb(*m[1:])  # inline colour
+over = {}
+for a, b, t in re.findall(r'dependency\s*=\s*\{\s*first\s*=\s*(\w+)\s+second\s*=\s*(\w+)\s+subject_type\s*=\s*(\w+)', open(f'{SETUP}/12_diplomacy.txt', encoding='utf-8-sig').read()):
+    over[b] = [a, name(t, f'subject_type_{t}_name', t)]
+L, idx, areas, countries = [], {}, [], {}
+RANK = {'town': 1, 'city': 2}
+def lidx(l):
+    if l not in idx:
+        a = area_of.get(l, '')
+        if a not in areas:
+            areas.append(a)
+        idx[l] = len(L)
+        L.append([name(l, l), get(tmpl.get(l, []), 'raw_material') or '', *pos[l], '', RANK.get(ranks.get(l), 0), areas.index(a)])
+    return idx[l]
+for tag, _, b in get(get(setup('10_countries.txt'), 'countries'), 'countries'):
+    if not isinstance(b, list):
+        continue
+    locs = [x for k, _, v in b if k and k.startswith('own_') and isinstance(v, list) for _, _, x in v if x in pos]
+    if not locs:
+        continue
+    for l in locs:
+        L[lidx(l)][4] = tag
+    tot, cul, rel = {}, {}, {}
+    for t, c, r, n in (p for l in locs for p in loc_pops.get(l, [])):
+        tot[t] = round(tot.get(t, 0) + n, 3); cul[c] = cul.get(c, 0) + n; rel[r] = rel.get(r, 0) + n
+    top = lambda d: name(max(d, key=d.get), max(d, key=d.get)) if d else None
+    cap = get(b, 'capital')
+    countries[tag] = {'name': name(tag, tag), 'cap': lidx(cap) if cap in pos else None, 'locs': [idx[l] for l in locs],
+                      'color': ccol.get(tag), 'pops': tot, 'culture': top(cul), 'religion': top(rel),
+                      'over': over.get(tag), 'rank': name(get(b, 'country_rank') or '', get(b, 'country_rank') or '')}
+for l in pos:  # every other land location with a raw good, unowned or not, so neighbours can be listed
+    if get(tmpl.get(l, []), 'raw_material'):
+        lidx(l)
+assert countries['MOS']['name'] == 'Muscovy' and L[countries['MOS']['cap']][0] == 'Moscow' and L[countries['MOS']['cap']][5] == 2 and countries['FRA']['color'] and countries['PSK']['over'][0] == 'NOV'
+with open(f'{OUT}/public/nations.json', 'w') as f:
+    json.dump({'locs': L, 'areas': [name(a, a) for a in areas], 'countries': countries}, f, separators=(',', ':'), ensure_ascii=False)
 
 data = {'popInfo': pop_info, 'demandMods': demand_mods, 'tempDemand': temp_demand, 'ages': ages, 'units': units, 'demandRefs': demand_refs, 'goods': goods, 'buildings': buildings, 'demands': demands, 'pops': pops, 'cats': cats,
         'icons': {d: sorted(os.path.splitext(f)[0] for f in os.listdir(os.path.join(OUT, 'public', 'icons', d)))

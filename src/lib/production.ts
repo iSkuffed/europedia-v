@@ -15,6 +15,12 @@ export function icon(kind: string, id: string, label: string) {
   const ab = label.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   return `<span class="ic-fb ${kind === 'buildings' ? 'b' : ''}" title="${esc(label)}">${esc(ab)}</span>`;
 }
+// what one pop of type p buys of good g: (own + all + upper) x own multiplier x upper multiplier, then the chosen age's modifier
+export function popDemand(g: string, p: string) {
+  const {demand: a, demandMul: m} = G[g], up = DATA.popInfo.types[p].upper;
+  const base = ((a[p] || 0) + (a.all || 0) + (up ? a.upper || 0 : 0)) * (m[p] ?? 1) * (up ? m.upper ?? 1 : 1);
+  return Math.max(0, base * (1 + agePct(g, AGE.v)));
+}
 export const gChip = (g: string, n?: number) => `<a class="chip" href="#g/${g}">${icon('goods', g, G[g]?.name || g)}${esc(G[g]?.name || g)}${n != null ? ` <span class="n">${fmt(n)}</span>` : ''}</a>`;
 // compact: icon + amount, name in tooltip (for dense recipe lines)
 const gIco = (g: string, n?: number) => `<a class="chip ico" href="#g/${g}" title="${esc(G[g]?.name || g)}">${icon('goods', g, G[g]?.name || g)}${n != null ? `<span class="n">${fmt(n)}</span>` : ''}</a>`;

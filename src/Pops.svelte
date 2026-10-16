@@ -1,19 +1,14 @@
 <script lang="ts">
   // Pops page: social classes, what each one buys, and what makes room for them / makes them promote.
   import { DATA, type PopSource } from './lib/data';
-  import { icon, fmt, gChip, bChip, pIcon, esc, KIND, signed, pctTxt, ROMAN, agePct, trig } from './lib/production';
+  import { icon, fmt, gChip, bChip, pIcon, esc, KIND, signed, pctTxt, ROMAN, agePct, trig, popDemand } from './lib/production';
   import { AGE } from './lib/age.svelte';
 
   let { id }: { id: string | null } = $props();
   const {goods: G, buildings: B, pops: P, cats: CATS, popInfo: PI} = DATA;
   const T = PI.types, POPS = Object.keys(T);
 
-  // per-pop demand: (own + all + upper) x own multiplier x upper multiplier, then the chosen age's modifier
-  function demand(g: string, p: string) {
-    const {demand: a, demandMul: m} = G[g], up = T[p].upper;
-    const base = ((a[p] || 0) + (a.all || 0) + (up ? a.upper || 0 : 0)) * (m[p] ?? 1) * (up ? m.upper ?? 1 : 1);
-    return Math.max(0, base * (1 + agePct(g, AGE.v)));
-  }
+  const demand = popDemand;
   const wanted = $derived(Object.keys(G).filter(g => POPS.some(p => demand(g, p) > 0)));
   const colMax = $derived(Object.fromEntries(POPS.map(p => [p, Math.max(...wanted.map(g => demand(g, p)))])));
   const ageLabel = $derived(AGE.v ? `Age ${ROMAN[AGE.v]}: ${DATA.ages[AGE.v]}` : 'before age modifiers');

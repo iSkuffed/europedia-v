@@ -293,3 +293,40 @@ img.hic { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; 
 @keyframes glint { to { transform: translateX(100%); } }
 @keyframes grow { from { transform: scaleX(0); } }
 @keyframes press { 40% { transform: scale(1.18); } }
+
+/* nations page */
+.sw { display: inline-block; width: 12px; height: 12px; flex: none; border: 1px solid #000; box-shadow: inset 0 0 0 1px #ffffff33; border-radius: 2px; }
+.nfilter { width: 100%; margin: 0 0 8px; background: #0d1117; color: var(--text); border: 1px solid var(--line); border-radius: 3px; padding: 4px 8px; }
+.nfilter:focus { outline: none; border-color: var(--frame-hi); }
+.chip.nat { gap: 6px; padding-left: 6px; }
+.natgrid { display: flex; flex-wrap: wrap; gap: 2px; }
+/* the nation's colour as a heraldic shield on the title plate */
+.shield { flex: none; width: 58px; height: 68px; background: linear-gradient(160deg, #ffffff40, transparent 45%, #0006), var(--c);
+  clip-path: path("M2 2 H56 V30 C56 50 42 62 29 67 C16 62 2 50 2 30 Z"); filter: drop-shadow(0 2px 2px #000); position: relative; }
+.shield::before { content: ""; position: absolute; inset: 0; clip-path: inherit; box-shadow: inset 0 0 0 3px var(--frame-hi); }
+.title.nation .desc { margin-top: 4px; }
+.tgl { margin-left: 8px; color: var(--dim); font-size: 13px; white-space: nowrap; cursor: pointer; }
+.reading p { margin: 4px 0 10px; line-height: 1.7; }
+.reading b { color: var(--gold); font-weight: 600; }
+.nw { white-space: nowrap; }
+.cnt { color: var(--gold); font-size: 12px; margin: 0 4px 0 -1px; }
+.fit { display: grid; grid-template-columns: 8.5em 1fr 3.5em; gap: 8px; align-items: center; padding: 3px 0; border-top: 1px solid var(--line); }
+.fit:first-of-type { border-top: none; }
+.fit .who { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.fit .who img.ic { width: 22px; height: 22px; }
+.fit .n { text-align: right; color: var(--out); font-variant-numeric: tabular-nums; }
+.fitd { padding: 0 0 6px 8.5em; display: flex; flex-wrap: wrap; align-items: center; }
+.fitd .chip { font-size: 13px; }
+.fitd .miss { color: var(--dim); font-size: 12px; margin-left: 4px; }
+.rgos { display: flex; flex-wrap: wrap; gap: 2px 6px; }
+.rg { display: inline-flex; align-items: center; }
+.rg b { color: var(--gold); font-weight: 600; font-size: 13px; margin-left: 1px; }
+.radii { display: flex; gap: 4px; margin: 2px 0 8px; }
+.radii button { cursor: pointer; font: inherit; font-size: 13px; color: var(--text); background: #0d1117; border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; }
+.radii button i { color: var(--dim); font-size: 11px; }
+.radii button.on { border-color: var(--frame-hi); color: var(--gold); box-shadow: 0 0 6px #d8b46a55; }
+.dm.nr { grid-template-columns: 3em 1fr; }
+.tag.new { color: var(--out); border-color: #4f7d3a; margin-left: 4px; }
+.reading .chip { padding: 0 6px 0 2px; margin: 1px; font-size: 13px; vertical-align: middle; }
+.reading .chip img.ic { width: 20px; height: 20px; }
+.rg.spec .chip { border-color: var(--frame-hi); box-shadow: 0 0 6px #d8b46a44; }
