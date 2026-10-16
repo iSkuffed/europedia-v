@@ -2,7 +2,7 @@
 import { DATA, type Recipe } from './data';
 
 type Use = [bid: string, r: Recipe];  // a building running a recipe
-type Card = [body: string, heading: string, emptyText: string];
+type Card = [body: string, heading: string, emptyText: string, cls?: string];  // cls 'big': gets a wider column
 
 const {goods: G, buildings: B, demands: D, pops: P, cats: CATS, units: U, demandRefs: DREF} = DATA;
 const HAS = Object.fromEntries(Object.entries(DATA.icons).map(([k, v]) => [k, new Set(v)]));
@@ -214,8 +214,7 @@ function downChain(g: string, depth = 3) {
 // filled cards render; empty ones only add their text to EMPTY, which route() shows as one line below everything
 let EMPTY: string[] = [];
 const keep = (list: Card[]) => { EMPTY.push(...list.filter(c => !c[0]).map(c => c[2])); return list.filter(c => c[0]); };
-const cards = (list: Card[]) => `<div class="masonry">${keep(list).map(([body, h]) => `<section class="card">${h}${body}</section>`).join('')}</div>`;
-const wide = (list: Card[]) => { const k = keep(list); return k.length ? `<div class="cols">${k.map(([body, h]) => `<section class="card">${h}${body}</section>`).join('')}</div>` : ''; };
+const cards = (list: Card[]) => `<div class="masonry">${keep(list).map(([body, h, , cls]) => `<section class="card${cls ? ' ' + cls : ''}">${h}${body}</section>`).join('')}</div>`;
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
 function filterBar(g: string) {
   if (!producers[g]) return '';
@@ -238,7 +237,7 @@ function upkeepGroups(g: string, ms: Use[]) {
   for (const [b, r] of ms) (by[r.in[g]] ??= new Set()).add(b);
   return Object.entries(by).sort((a, b) => +b[0] - +a[0]).map(([n, bs]) =>
     `<div class="ugrp"><div class="who">${chipList([...bs].map(b => bChip(b)), 24)}</div>
-    <div class="need"><span class="arrow">each needs →</span>${gChip(g, +n)}</div></div>`).join('');
+    <div class="need"><span class="arrow">each needs →</span><a class="chip" href="#g/${g}">${icon('goods', g, G[g].name)}<span class="nm">${esc(G[g].name)}</span> <span class="n">${fmt(+n)}</span></a></div></div>`).join('');
 }
 
 // construction: how many buildings need this good to be built; CORE = needed by ≥20% of buildings (masonry, lumber, tools, glass)
@@ -308,17 +307,15 @@ function goodView(g: string) {
 
   return `<div class="title lg">${icon('goods', g, x.name)}<div><h2>${esc(x.name)}</h2><div class="meta">${meta.map(m => `<span>${esc(m)}</span>`).join('')}</div>${conNote(g)}</div>${foodBar(g)}${conBar(g)}${popBar(x)}${filterBar(g)}</div>
   ${cards([
+    [upChain(g), `<h4 class="in">Upstream — what it takes to make ${esc(x.name)}</h4>`, 'Raw material, extracted by RGOs.', 'big'],
+    [downChain(g), `<h4 class="out">Downstream — what ${esc(x.name)} becomes</h4>`, 'Not processed into any other good.'],
+    [upkeepGroups(g, ms), '<h4 class="gold">Building upkeep — amount is per building</h4>', 'Not used as building upkeep.'],
     [made, '<h4 class="out">Produced by</h4>', 'No building produces this.'],
     [recipeGroups(cs), '<h4 class="in">Input for production</h4>', 'Not an input for any production method.'],
     [pops || muls || x.food ? `${pops || muls ? `<table class="pops">${pops}${muls}</table>` : ''}
       ${x.food ? `<div class="rec">${APPLE}&nbsp;Provides ${fmt(x.food)} food per unit</div>` : ''}` : '', '<h4 class="pop">Consumed by pops</h4>', 'No direct pop demand.'],
     [unitDem, '<h4 class="in">Army &amp; navy (recruit, upkeep, repair)</h4>', 'Not used by any unit.'],
     [dem, '<h4 class="gold">Construction &amp; other demand</h4>', 'None.'],
-  ])}
-  ${wide([
-    [upChain(g), `<h4 class="in">Upstream — what it takes to make ${esc(x.name)}</h4>`, 'Raw material, extracted by RGOs.'],
-    [downChain(g), `<h4 class="out">Downstream — what ${esc(x.name)} becomes</h4>`, 'Not processed into any other good.'],
-    [upkeepGroups(g, ms), '<h4 class="gold">Building upkeep — amount is per building</h4>', 'Not used as building upkeep.'],
   ])}`;
 }
 
@@ -349,8 +346,8 @@ function buildingView(bid: string) {
     [up.map(r => `<div class="rec">${r.name ? `<div class="rname">${esc(r.name)}</div>` : ''}${Object.entries(r.in).map(([g, n]) => gChip(g, n)).join('') || '<span class="none">none</span>'}</div>`).join(''), '<h4 class="gold">Upkeep</h4>', 'No goods upkeep.'],
     [build + (replaces ? `<div class="rec"><span class="arrow">Replaces</span>${replaces}</div>` : '')
       + (replacedBy ? `<div class="rec"><span class="arrow">Replaced by</span>${replacedBy}</div>` : ''), '<h4 class="gold">Construction</h4>', 'No goods cost listed.'],
-  ])}
-  ${wide(outs.map(o => [downChain(o), `<h4 class="out">Downstream — what ${esc(G[o].name)} becomes</h4>`, `${esc(G[o].name)} is not processed into any other good.`]))}`;
+    ...outs.map((o): Card => [downChain(o), `<h4 class="out">Downstream — what ${esc(G[o].name)} becomes</h4>`, `${esc(G[o].name)} is not processed into any other good.`]),
+  ])}`;
 }
 
 function overview() {
@@ -380,15 +377,21 @@ function sidebar() {
   return h;
 }
 
-// distribute cards (in priority order) into N columns, each card going to the currently shortest column
+// distribute cards (in priority order) into N columns, each card going to the currently shortest column,
+// so short cards fill the space under other short cards. A 'big' card (upstream) gets a column 1.6x as wide.
+const COL = 340, GAP = 16, BIG = 1.6;
 function layoutMasonry(root: HTMLElement) {
   for (const m of root.querySelectorAll<HTMLElement>('.masonry')) {
     const cards = [...m.querySelectorAll<HTMLElement>(':scope > .card, :scope > .mcol > .card')];
-    const n = Math.max(1, Math.min(cards.length, Math.floor((m.clientWidth + 16) / 356)));
+    const extra = cards.some(c => c.classList.contains('big')) ? (BIG - 1) * COL : 0;
+    const n = Math.max(1, Math.min(cards.length, Math.floor((m.clientWidth + GAP - extra) / (COL + GAP))));
     const cols = Array.from({length: n}, () => Object.assign(document.createElement('div'), {className: 'mcol'}));
     m.replaceChildren(...cols);
-    for (const c of cards) cols.reduce((a, b) => b.offsetHeight < a.offsetHeight ? b : a).append(c);
-    m.replaceChildren(...cols.sort((a, b) => b.offsetHeight - a.offsetHeight));  // longest column on the left
+    for (const c of cards) {
+      const col = cols.reduce((a, b) => b.offsetHeight < a.offsetHeight ? b : a);
+      if (c.classList.contains('big') && n > 1) col.style.flexGrow = String(BIG);
+      col.append(c);
+    }
   }
 }
 
