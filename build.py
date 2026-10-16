@@ -1,6 +1,6 @@
 """Extract EU5 production data into src/data.json for the app.
 Usage: python3 -I build.py [game_dir]"""
-import sys, os, glob, json, re
+import sys, os, glob, json, re, itertools
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pdx import parse, get, items, num
 
@@ -63,10 +63,22 @@ def amounts(block):
 def recipe(rid, b):
     r = {'id': rid, 'in': amounts(b), 'cat': get(b, 'category')}
     if rid in loc:
-        r['name'] = clean(loc[rid])
+        r['name'] = clean(resolve(loc[rid]))
     if get(b, 'produced'):
         r['out'] = get(b, 'produced')
         r['amt'] = num(get(b, 'output')) or 0
+    return r
+
+
+def combine(rs):  # one method per slot -> one recipe with summed inputs and output
+    assert len({r.get('out') for r in rs}) == 1, [r['id'] for r in rs]
+    r = {'id': '+'.join(r['id'] for r in rs), 'parts': [r['id'] for r in rs], 'in': {}, 'cat': rs[0]['cat'],
+         'name': ' + '.join(r.get('name', r['id']) for r in rs)}
+    for x in rs:
+        for g, n in x['in'].items():
+            r['in'][g] = round(r['in'].get(g, 0) + n, 4)
+    if 'out' in rs[0]:
+        r['out'], r['amt'] = rs[0]['out'], round(sum(x['amt'] for x in rs), 4)
     return r
 
 
@@ -126,14 +138,19 @@ def event_only(b):  # allow = { always = no } (directly or inside a custom_toolt
 
 
 for bid, b in load('building_types').items():
-    recs = [recipe(k, v) for k, v in items(get(b, 'unique_production_methods') or [])]
     def refs(block):
         for k, _, v in block or []:
             if isinstance(v, list):
                 yield from refs(v)
             elif k is None:
                 yield v
-    recs += [recipe(r, pms[r]) for r in refs(get(b, 'possible_production_methods')) if r in pms]
+    # each methods block is a slot; the building runs one method from every slot at once
+    # (jewelry: gold/silver/copper base + ivory/amber/gems/pearls enhancement), so slots combine
+    slots = [[recipe(k, v) for k, v in items(v)] if k == 'unique_production_methods'
+             else [recipe(r, pms[r]) for r in refs(v) if r in pms]
+             for k, _, v in b if k in ('unique_production_methods', 'possible_production_methods')]
+    slots = [s for s in slots if s]
+    recs = slots[0] if len(slots) == 1 else [combine(rs) for rs in itertools.product(*slots)] if slots else []
     cd = get(b, 'construction_demand')
     buildings[bid] = {
         'name': name(bid, bid, f'building_type_{bid}', f'building_{bid}'),
@@ -208,8 +225,9 @@ for adv in load('advances').values():
 for bid, b in buildings.items():
     b['age'] = unlock_age.get(bid, 1)
     for r in b['recipes']:
-        if r['id'] in unlock_age:
-            r['age'] = unlock_age[r['id']]
+        a = [unlock_age[i] for i in r.get('parts', [r['id']]) if i in unlock_age]
+        if a:
+            r['age'] = max(a)
 ages = {}
 for k in load('age'):
     if age_no(k):
@@ -218,7 +236,141 @@ for k in load('age'):
 pops = {p: name(p, p, f'pop_type_{p}', f'{p}_pop') for p in POPS}
 cats = {c: name(c, c) for c in {b['cat'] for b in buildings.values() if b['cat']}}
 
-data = {'ages': ages, 'units': units, 'demandRefs': demand_refs, 'goods': goods, 'buildings': buildings, 'demands': demands, 'pops': pops, 'cats': cats,
+# ---- what changes pop demand for a good ----------------------------------------------
+# modifiers: global_<good>_pop_demand (+%) from ages, reforms, institutions, event modifiers...;
+# goods_demand_modifier blocks (x multiplier) on cultures / religions; Promote Industry; and
+# temporary market demand that events add (add_temporary_demand).
+MM = f'{GAME}/main_menu/common'
+
+
+def tree(path):  # (file, key, block) for top-level objects in every .txt under path
+    for f in sorted(glob.glob(f'{path}/**/*.txt', recursive=True)):
+        for k, v in items(parse(open(f, encoding='utf-8-sig').read())):
+            if isinstance(v, list):
+                yield f, k, v
+
+
+def leaves(block):
+    for k, _, v in block:
+        if isinstance(v, list):
+            yield from leaves(v)
+        elif k:
+            yield k, v
+
+
+SV = {}
+for path in (f'{MM}/script_values', f'{C}/script_values'):
+    for f in glob.glob(f'{path}/*.txt'):
+        for k, v in items(parse(open(f, encoding='utf-8-sig').read())):
+            if num(v) is not None:
+                SV[k] = num(v)
+val = lambda v: num(v) if num(v) is not None else SV.get(v)
+POP_MOD = re.compile(r'global_(\w+)_pop_demand$')
+demand_mods = {}  # good ('*' = every good) -> [{kind, id, name, pct | mul, clergy?, by?}]
+
+
+def add_mod(g, m):
+    lst = demand_mods.setdefault(g, [])
+    if m not in lst:
+        lst.append(m)
+
+
+static_mods = {}  # static modifier id -> {good: pct}
+for f, k, v in tree(f'{MM}/static_modifiers'):
+    for lk, lv in leaves(v):
+        m = POP_MOD.match(lk)
+        g = m.group(1) if m else '*' if lk == 'global_pop_demand' else None
+        if g and (g == '*' or g in GOODS) and val(lv) is not None:
+            static_mods.setdefault(k, {})[g] = val(lv)
+
+# who applies those static modifiers (events, decisions, ...), and every temporary demand an event adds
+appliers, temp_demand = {}, {}
+
+
+def script_text(t):  # event titles: [ShowGoodsName('maize')] -> Maize, other runtime text -> "…"
+    t = re.sub(r"\[Show\w*?Name\w*\('(\w+)'\)\]", lambda m: name(m.group(1), m.group(1), f'goods_{m.group(1)}'), t)
+    return re.sub(r'\[[^\]]*\]', '…', t)
+
+
+def title(folder, k, v):
+    t = get(v, 'title')
+    out = {'name': script_text(clean(resolve(loc[t]))) if isinstance(t, str) and t in loc else name(k, k)}
+    if not re.search(r'\w', out['name'].replace('…', '')):  # title is all runtime text
+        out['name'] = f'Untitled event ({k})'
+    m = re.match(r'flavor_([a-z]{3})[._]', k)  # flavor_eng.21 -> an England event
+    if folder == 'events' and m and m.group(1).upper() in loc:
+        out['tag'] = clean(loc[m.group(1).upper()])
+    return out
+
+
+for root, folder_of in ((f'{GAME}/in_game/events', lambda f: 'events'),
+                        (C, lambda f: os.path.relpath(f, C).split(os.sep)[0])):
+    for f, k, v in tree(root):
+        folder = folder_of(f)
+        if folder in ('goods_demand', 'goods', 'building_types', 'production_methods') or '/debug/' in f:
+            continue
+        who = None
+        def find(block):
+            for bk, _, bv in block:
+                if isinstance(bv, list):
+                    if bk == 'add_temporary_demand':
+                        t = get(bv, 'type', '')
+                        d = t.split(':', 1)[-1]
+                        if d in demands:
+                            yield 'temp', d, bv
+                    else:
+                        yield from find(bv)
+                elif bk == 'modifier' and bv in static_mods:
+                    yield 'mod', bv, None
+        for kind, x, bv in find(v):
+            who = who or {'kind': folder, 'id': k, **title(folder, k, v)}
+            if kind == 'mod':
+                if who not in appliers.setdefault(x, []):
+                    appliers[x].append(who)
+            else:
+                e = dict(who, months=val(get(bv, 'months')), scale=val(get(bv, 'scale')) or 1)
+                if e not in temp_demand.setdefault(x, []):
+                    temp_demand[x].append(e)
+
+for mid, gs in static_mods.items():
+    for g, pct in gs.items():
+        add_mod(g, {'kind': 'modifier', 'id': mid, 'name': name(mid, f'STATIC_MODIFIER_NAME_{mid}', mid), 'pct': pct, 'by': appliers.get(mid, [])})
+
+# modifier blocks on ages, reforms, religious aspects, institutions, societal values...
+for d in sorted(os.listdir(C)):
+    if not os.path.isdir(f'{C}/{d}') or d in ('industry_types', 'goods', 'goods_demand', 'building_types', 'production_methods'):
+        continue
+    for k, v in load(d).items():
+        # societal values: left_modifier / right_modifier apply when leaning to that side ("Serfdom vs Free Subjects")
+        sides = [(sk, sv) for sk, _, sv in v if sk in ('left_modifier', 'right_modifier')] if d == 'societal_values' else [(None, v)]
+        for side, blk in sides:
+            for lk, lv in leaves(blk):
+                m = POP_MOD.match(lk)
+                g = m.group(1) if m else '*' if lk == 'global_pop_demand' else None
+                if g and (g == '*' or g in GOODS) and val(lv) is not None:
+                    e = {'kind': d, 'id': k, 'name': name(k, k), 'pct': val(lv)}
+                    if d == 'age':
+                        e['age'] = age_no(k)
+                    if side:
+                        parts = e['name'].split(' vs ')
+                        e['side'] = parts[side == 'right_modifier'] if len(parts) == 2 else side.split('_')[0]
+                    add_mod(g, e)
+
+# Promote Industry: every good in the industry gets global_<good>_pop_demand = pop_demand
+for k, v in load('industry_types').items():
+    pd = val(get(v, 'pop_demand'))
+    for g in [x for x, _, _ in get(v, 'goods') or [] if x] + [vv for kk, _, vv in get(v, 'goods') or [] if kk is None]:
+        if g in GOODS and pd:
+            add_mod(g, {'kind': 'industry_types', 'id': k, 'name': name(k, k, f'industry_{k}'), 'pct': pd})
+
+# x multipliers on every pop (or just clergy) of a culture / culture group / religion / religion group
+for d in ('culture_groups', 'cultures', 'religion_groups', 'religions'):
+    for k, v in load(d).items():
+        for key, clergy in (('goods_demand_modifier', False), ('clergy_goods_demand_modifier', True)):
+            for g, n in amounts(get(v, key) or []).items():
+                add_mod(g, {'kind': d, 'id': k, 'name': name(k, k), 'mul': n, 'clergy': clergy})
+
+data = {'demandMods': demand_mods, 'tempDemand': temp_demand, 'ages': ages, 'units': units, 'demandRefs': demand_refs, 'goods': goods, 'buildings': buildings, 'demands': demands, 'pops': pops, 'cats': cats,
         'icons': {d: sorted(os.path.splitext(f)[0] for f in os.listdir(os.path.join(OUT, 'public', 'icons', d)))
                   for d in ('goods', 'buildings', 'pops', 'units') if os.path.isdir(os.path.join(OUT, 'public', 'icons', d))}}
 
@@ -235,3 +387,8 @@ assert units['a_houfnice']['dem'] == {'maintenance': 'artillery_maintenance', 'c
                                       'repair': 'artillery_construction'}, units['a_houfnice']
 assert buildings['furniture_workshop']['age'] == 4 and buildings['furniture_guild' if 'furniture_guild' in buildings else 'cloth_guild']['age'] == 1
 assert ['Nation', 'Muscovy'] in buildings['bolshoi_theater']['req'] and buildings['bolshoi_theater']['event']
+jg = buildings['jewelry_guild']['recipes']  # two slots: 3 bases x 4 enhancements
+assert len(jg) == 12 and any(r['in'] == {'goods_gold': 0.5208, 'gems': 0.1042} and r['amt'] == 1.1 for r in jg), jg
+assert any(m.get('mul') == 4 and m['id'] == 'andean_group' for m in demand_mods['potato'])
+assert [m['pct'] for m in demand_mods['tobacco'] if m['kind'] == 'age'] == [-0.75, -0.75, -0.25, 0.5, 1.0, 1.5]
+assert any(a['id'] == 'anglican_events.11' for m in demand_mods['fine_cloth'] if m['kind'] == 'modifier' for a in m['by'])

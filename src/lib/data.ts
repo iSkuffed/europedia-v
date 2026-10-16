@@ -10,6 +10,7 @@ export interface Recipe {
   out?: string;  // absent for upkeep recipes
   amt?: number;
   age?: number;  // age this method unlocks in, if later than the building
+  parts?: string[];  // methods combined from several slots (one per slot, run together)
 }
 export interface Good {
   name: string;
@@ -42,7 +43,23 @@ export interface Unit {
 }
 export interface Demand { cat: string; in: Record<string, number> }
 export interface DemandRef { f: string; id: string; name: string }
+// something that changes how much pops want a good: +pct (global_<good>_pop_demand) or x mul (culture / religion)
+export interface DemandMod {
+  kind: string;  // folder it comes from: age, government_reforms, cultures, religion_groups, modifier, industry_types...
+  id: string;
+  name: string;
+  pct?: number;
+  mul?: number;
+  clergy?: boolean;  // multiplier applies to clergy pops only
+  age?: number;
+  side?: string;  // societal value side that gives it
+  by?: Trigger[];  // for event modifiers: what applies them
+}
+export interface Trigger { kind: string; id: string; name: string; tag?: string }  // event / decision / on_action
+export interface TempDemand extends Trigger { months: number | null; scale: number }
 export interface Data {
+  demandMods: Record<string, DemandMod[]>;  // good ('*' = every good) -> modifiers
+  tempDemand: Record<string, TempDemand[]>;  // goods_demand id -> events that add it to a market for a while
   ages: Record<string, string>;
   units: Record<string, Unit>;
   demandRefs: Record<string, DemandRef[]>;

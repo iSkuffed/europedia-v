@@ -110,29 +110,39 @@ function bIcons(bids: string[]) {
   const multi = chains.filter(c => c.length > 1), solo = chains.filter(c => c.length === 1);
   return [...multi.map(c => c.map(link).join('')), solo.map(c => link(c[0])).join('')].filter(Boolean).join('<span class="bsep"></span>');
 }
-// How a good is made, from every recipe that makes it (not just the minimal ones):
-// "always" = inputs (or swappable groups like Lumber / Leather, as 'G:<root>' tokens) that every recipe uses;
-// rows = buildings with the same remaining options, in upgrade order, each listing its recipes.
-function recipeView(g: string) {
-  const ps = prod(g), key = (s: Iterable<string>) => [...s].sort().join('+');
-  const sets = [...new Map(ps.map(([, r]) => [key(Object.keys(r.in)), Object.keys(r.in)])).values()].filter(s => s.length);
+const key = (s: Iterable<string>) => [...s].sort().join('+');
+const members = (t: string) => t.startsWith('G:') ? t.slice(2).split(',') : [t];
+// Either groups: inputs that swap one-for-one ('G:a,b' tokens). Kept only if every combination
+// they imply is a real recipe and nothing is lost; null if that fails.
+function swapTok(sets: string[][]) {
   const K = new Set(sets.map(key)), all = [...new Set(sets.flat())];
   const up: Record<string, string> = Object.fromEntries(all.map(i => [i, i]));
   const find = (x: string): string => up[x] === x ? x : (up[x] = find(up[x]));
   for (const s of sets) for (const x of s) for (const y of all)  // x and y are swappable if trading one for the other gives another recipe
     if (!s.includes(y) && K.has(key([...s.filter(i => i !== x), y]))) up[find(y)] = find(x);
-  let members: Record<string, string[]> = {};
-  for (const i of all) (members[find(i)] ??= []).push(i);
-  let tok = (i: string) => members[find(i)].length > 1 ? 'G:' + find(i) : i;
-  // groups are only kept if every combination they imply is a real recipe and nothing is lost
-  const expand = (t: string[]) => t.reduce((acc, x) => acc.flatMap(a => (x.startsWith('G:') ? members[x.slice(2)] : [x]).map(i => [...a, i])), [[]] as string[][]);
+  const grp: Record<string, string[]> = {};
+  for (const i of all) (grp[find(i)] ??= []).push(i);
+  const tok = (i: string) => grp[find(i)].length > 1 ? 'G:' + [...grp[find(i)]].sort().join(',') : i;
+  const expand = (t: string[]) => t.reduce((acc, x) => acc.flatMap(a => members(x).map(i => [...a, i])), [[]] as string[][]);
   const back = new Set(sets.flatMap(s => expand([...new Set(s.map(tok))])).map(key));
-  if (back.size !== K.size || ![...back].every(k => K.has(k))) { members = Object.fromEntries(all.map(i => [i, [i]])); tok = i => i; }
-  const T = (s: string[]) => [...new Set(s.map(tok))];
-  const always = sets.length ? T(sets[0]).filter(t => sets.every(s => T(s).includes(t))) : [];
+  return back.size === K.size && [...back].every(k => K.has(k)) ? tok : null;
+}
+// How a good is made, from every recipe that makes it (not just the minimal ones):
+// "always" = inputs (or Either groups like Lumber / Leather) that every recipe uses;
+// rows = buildings with the same remaining options, in upgrade order, each listing its recipes.
+function recipeView(g: string) {
+  const ps = prod(g);
+  const setsOf = (rs: Use[]) => [...new Map(rs.map(([, r]) => [key(Object.keys(r.in)), Object.keys(r.in)])).values()].filter(s => s.length);
+  // groups across all producers first; if that doesn't hold (jewelry: Pounamou's lone Gems vs the guild's
+  // base + enhancement), find each building's own groups
+  const global = swapTok(setsOf(ps)), id = (i: string) => i;
+  const tokB = new Map([...new Set(ps.map(([b]) => b))].map(b => [b, global || swapTok(setsOf(ps.filter(([x]) => x === b))) || id]));
+  const T = (b: string, s: string[]) => [...new Set(s.map(tokB.get(b)!))];
+  const sets = ps.map(([b, r]) => T(b, Object.keys(r.in))).filter(s => s.length);
+  const always = sets.length ? sets[0].filter(t => sets.every(s => s.includes(t))) : [];
   const byB = new Map<string, Map<string, string[]>>();
   for (const [bid, r] of ps) {
-    const o = T(Object.keys(r.in)).filter(t => !always.includes(t));
+    const o = T(bid, Object.keys(r.in)).filter(t => !always.includes(t));
     if (!byB.has(bid)) byB.set(bid, new Map());
     byB.get(bid)!.set(key(o), o);
   }
@@ -144,26 +154,31 @@ function recipeView(g: string) {
   }
   const order = orderB([...byB.keys()]).flat(), pos = (r: {bids: string[]}) => Math.min(...r.bids.map(b => order.indexOf(b)));
   const allB = new Set(byB.keys());
-  const span = (i: string) => {  // building tag for an Either option not every producer can use
-    const bs = [...allB].filter(b => [...byB.get(b)!.values()].some(o => o.includes(tok(i))) || always.includes(tok(i)) && ps.some(([x, r]) => x === b && i in r.in));
-    return bs.length < allB.size ? bIcons(bs) : '';
+  const span = (x: string, i: string) => {  // building tag for an Either option not every building using that box can use
+    const users = [...allB].filter(b => ps.some(([y, r]) => y === b && T(b, Object.keys(r.in)).includes(x)));
+    const bs = users.filter(b => ps.some(([y, r]) => y === b && i in r.in));
+    return bs.length < users.length ? bIcons(bs) : '';
   };
-  return {always, rows: [...groups.values()].sort((a, b) => pos(a) - pos(b)), members, span, allB};
+  return {always, rows: [...groups.values()].sort((a, b) => pos(a) - pos(b)), span, allB};
 }
 // panel titles explain themselves on hover
 const TERMS: Record<string, string> = {
   'Always': 'Every recipe for this good uses these. The icons next to the title are the buildings that make it.',
   'Either': 'Use any one of these. If an option has building icons under it, only those buildings can use it.',
   'Plus, by building': 'Some buildings need more than the Always inputs. Each row shows buildings on the left and what they add on the right. "or" means the building can run either recipe. Buildings that need nothing extra are not listed.',
+  'By age': 'Every pop\'s demand for this good changes by this much in each age.',
+  'Modifiers': 'Changes how much every pop in your country wants this good while you have it. +100% means double.',
+  'Culture & religion': 'Pops of these cultures or religions want this many times the normal amount. ×0 means they don\'t buy it at all. Clergy only means just their clergy.',
+  'Events': 'These events add demand for this good to a market for a while. The number is the extra amount bought.',
   'By building': 'No input is shared by every recipe, so each building\'s recipes are shown in full. Buildings on the same row use the same recipes. "or" means the building can run either recipe.',
 };
 const term = (t: string) => `<span class="term" data-tip="${esc(TERMS[t] || '')}">${t}</span>`;
 function optsHtml(g: string) {
-  const {always, rows, members, span, allB} = recipeView(g);
+  const {always, rows, span, allB} = recipeView(g);
   if (!rows.length) return '';
   const PLUS = '<span class="arrow">+</span>';
   const either = (x: string) => `<span class="fx either"><span class="fl">${term('Either')}</span><span class="fr">${
-    members[x.slice(2)].map(i => span(i) ? `<span class="em">${gChip(i)}<span class="bis">${span(i)}</span></span>` : gChip(i)).join('')}</span></span>`;
+    members(x).map(i => span(x, i) ? `<span class="em">${gChip(i)}<span class="bis">${span(x, i)}</span></span>` : gChip(i)).join('')}</span></span>`;
   // plain goods first, then Either boxes, joined with +
   const chips = (ts: string[]) => [...ts].sort((a, b) => +a.startsWith('G:') - +b.startsWith('G:')).map(x => x.startsWith('G:') ? either(x) : gChip(x)).join(PLUS);
   const head = (label: string) => `<span class="fl hd">${term(label)}<span class="bis">${bIcons([...allB])}</span></span>`;
@@ -224,7 +239,7 @@ function filterBar(g: string) {
       title="Age ${ROMAN[a]}: ${esc(DATA.ages[a])}${n ? '' : ' — not producible yet'}">${ROMAN[a]}</button>`;
   }).join('');
   const vs = variants(g);
-  const recs = vs.length > 1 ? `<div class="fgroup"><span class="flbl">Recipe</span>${vs.map((v, k) =>
+  const recs = vs.length > 1 && vs.length <= 8 ? `<div class="fgroup"><span class="flbl">Recipe</span>${vs.map((v, k) =>
     `<button class="rec${F.rec === k ? ' on' : ''}" data-f="rec" data-v="${k}" title="${esc(v.map(i => G[i].name).join(' + '))}">${v.map(i => icon('goods', i, G[i].name)).join('')}</button>`).join('')}</div>` : '';
   return `<div class="filters"><div class="fgroup"><span class="flbl">Age</span>${ages}</div>${recs}</div>`;
 }
@@ -279,6 +294,41 @@ function popBar(x: {demand: Record<string, number>; demandMul: Record<string, nu
     m.map(([p, n]) => pd(p, `×${fmt(n)}`, ' mul', `: demand ×${fmt(n)}`)).join('')}</div></div>`;
 }
 
+// ---- what changes pop demand ------------------------------------------------
+const KIND: Record<string, string> = {
+  government_reforms: 'Government reform', religious_aspects: 'Religious aspect', societal_values: 'Societal value',
+  industry_types: 'Promote Industry', modifier: 'Modifier', culture_groups: 'Culture group', cultures: 'Culture',
+  religion_groups: 'Religion group', religions: 'Religion', events: 'Event', decisions: 'Decision', on_action: 'Game event',
+};
+const signed = (n: number, unit = '') => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${fmt(Math.abs(n))}${unit}`;
+const pctTxt = (p: number) => signed(Math.round(p * 100), '%');
+const trig = (t: {kind: string; name: string; tag?: string}) => `${t.tag ? `<span class="tag">${esc(t.tag)}</span>` : `<span class="tag">${esc(KIND[t.kind] || t.kind)}</span>`} ${esc(t.name)}`;
+function demandShifts(g: string) {
+  const mods = [...(DATA.demandMods[g] || []), ...(DATA.demandMods['*'] || []).map(m => ({...m, all: true}))];
+  const ages = mods.filter(m => m.kind === 'age').sort((a, b) => a.age! - b.age!);
+  const pcts = mods.filter(m => m.pct != null && m.kind !== 'age').sort((a, b) => b.pct! - a.pct!);
+  const muls = mods.filter(m => m.mul != null);
+  const events = Object.entries(DATA.tempDemand).filter(([d]) => D[d]?.in[g]).flatMap(([d, ts]) => ts.map(t => ({...t, amt: D[d].in[g] * t.scale})))
+    .sort((a, b) => (a.tag || '~').localeCompare(b.tag || '~') || a.name.localeCompare(b.name));
+  const cls = (n: number, base = 0) => n > base ? 'up' : n < base ? 'down' : '';
+  const out: string[] = [];
+  if (ages.length) out.push(`<div class="dsec">${term('By age')}<div class="ages">${ages.map(a =>
+    `<span class="ag" title="Age ${ROMAN[a.age!]}: ${esc(DATA.ages[a.age!])}"><b>${ROMAN[a.age!]}</b><span class="${cls(a.pct!)}">${pctTxt(a.pct!)}</span></span>`).join('')}</div></div>`);
+  if (pcts.length) out.push(`<div class="dsec">${term('Modifiers')}${pcts.map(m => `<div class="dm"><span class="v ${cls(m.pct!)}">${pctTxt(m.pct!)}</span><span>${
+    `<span class="tag">${esc(KIND[m.kind] || m.kind)}</span> ${esc(m.name)}${m.side ? ` <i>(leaning ${esc(m.side)})</i>` : ''}${'all' in m ? ' <i>(every good)</i>' : ''}`
+    }${m.by?.length ? `<div class="by">from ${m.by.map(trig).join(', ')}</div>` : ''}</span></div>`).join('')}</div>`);
+  if (muls.length) {
+    const groups = new Map<string, typeof muls>();
+    for (const m of muls) { const k = `${m.mul}|${m.clergy ? 1 : 0}`; groups.set(k, [...(groups.get(k) || []), m]); }
+    out.push(`<div class="dsec">${term('Culture & religion')}${[...groups.values()].sort((a, b) => b[0].mul! - a[0].mul!).map(ms =>
+      `<div class="dm"><span class="v ${cls(ms[0].mul!, 1)}">×${fmt(ms[0].mul!)}</span><span>${ms[0].clergy ? `${pIcon('clergy')} <i>clergy only:</i> ` : ''}${
+        ms.map(m => `${esc(m.name)} <span class="kd">${esc(KIND[m.kind])}</span>`).join(', ')}</span></div>`).join('')}</div>`);
+  }
+  if (events.length) out.push(`<div class="dsec">${term('Events')}${chipList(events.map(e =>
+    `<div class="dm ev"><span class="v up">${signed(e.amt)}</span><span>${trig(e)}${e.months ? ` <i>for ${e.months} months</i>` : ''}</span></div>`), 10)}</div>`);
+  return out.join('');
+}
+
 function goodView(g: string) {
   const x = G[g];
   const ps = prod(g), cs = cons(g), ms = (maint[g] || []).filter(p => okR(p)), ds = demandUse[g] || [];
@@ -314,6 +364,7 @@ function goodView(g: string) {
     [recipeGroups(cs), '<h4 class="in">Input for production</h4>', 'Not an input for any production method.'],
     [pops || muls || x.food ? `${pops || muls ? `<table class="pops">${pops}${muls}</table>` : ''}
       ${x.food ? `<div class="rec">${APPLE}&nbsp;Provides ${fmt(x.food)} food per unit</div>` : ''}` : '', '<h4 class="pop">Consumed by pops</h4>', 'No direct pop demand.'],
+    [demandShifts(g), '<h4 class="pop">What changes demand</h4>', 'Nothing changes its demand.'],
     [unitDem, '<h4 class="in">Army &amp; navy (recruit, upkeep, repair)</h4>', 'Not used by any unit.'],
     [dem, '<h4 class="gold">Construction &amp; other demand</h4>', 'None.'],
   ])}`;
