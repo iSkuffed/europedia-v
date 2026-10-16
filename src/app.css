@@ -115,6 +115,9 @@ details { margin: 4px 0; }
 summary { cursor: pointer; color: #c9bc9c; }
 summary:hover { color: var(--gold); }
 details[open] > summary.more { display: none; }  /* "+N more" goes away once the rest is shown */
+summary.tag.more { display: inline; }
+button.less { cursor: pointer; margin: 4px 0; }
+button.less:hover { color: var(--gold); border-color: var(--frame); }
 .crow { display: flex; align-items: flex-start; gap: 4px; padding: 6px 0; border-top: 1px solid var(--line); }
 .crow:first-of-type { border-top: none; }
 .crow > .chip { flex: none; }
