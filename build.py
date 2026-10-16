@@ -1,4 +1,4 @@
-"""Extract EU5 production data into data.js for index.html.
+"""Extract EU5 production data into src/data.json for the app.
 Usage: python3 -I build.py [game_dir]"""
 import sys, os, glob, json, re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -219,11 +219,11 @@ pops = {p: name(p, p, f'pop_type_{p}', f'{p}_pop') for p in POPS}
 cats = {c: name(c, c) for c in {b['cat'] for b in buildings.values() if b['cat']}}
 
 data = {'ages': ages, 'units': units, 'demandRefs': demand_refs, 'goods': goods, 'buildings': buildings, 'demands': demands, 'pops': pops, 'cats': cats,
-        'icons': {d: sorted(os.path.splitext(f)[0] for f in os.listdir(os.path.join(OUT, 'icons', d)))
-                  for d in ('goods', 'buildings', 'pops', 'units') if os.path.isdir(os.path.join(OUT, 'icons', d))}}
+        'icons': {d: sorted(os.path.splitext(f)[0] for f in os.listdir(os.path.join(OUT, 'public', 'icons', d)))
+                  for d in ('goods', 'buildings', 'pops', 'units') if os.path.isdir(os.path.join(OUT, 'public', 'icons', d))}}
 
-with open(os.path.join(OUT, 'data.js'), 'w') as f:
-    f.write('const DATA = ' + json.dumps(data, separators=(',', ':')) + ';\n')
+with open(os.path.join(OUT, 'src', 'data.json'), 'w') as f:
+    json.dump(data, f, separators=(',', ':'))
 
 n_rec = sum(len(b['recipes']) for b in buildings.values())
 print(f'{len(units)} units, {len(demand_refs)} demands referenced elsewhere')

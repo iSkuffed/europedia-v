@@ -1,2 +1,4 @@
 __pycache__/
 _t.html
+node_modules/
+dist/
