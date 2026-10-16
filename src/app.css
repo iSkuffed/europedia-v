@@ -249,3 +249,8 @@ table.ptab { border-collapse: collapse; width: 100%; }
 header nav a { white-space: nowrap; }
 #search { min-width: 200px; }
 @media (max-width: 1450px) { .agesel .agename, .agesel .flbl { display: none; } .legal { max-width: 230px; } }
+.tips { margin: 6px 0; padding-left: 20px; }
+.tips li { margin-bottom: 8px; }
+.tips li b { color: var(--gold); font-weight: 600; }
+.dm .mk { display: block; font-size: 12px; color: var(--dim); }
+img.hic { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; }

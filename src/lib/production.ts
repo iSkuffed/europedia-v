@@ -304,7 +304,7 @@ export const KIND: Record<string, string> = {
 };
 export const signed = (n: number, unit = '') => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${fmt(Math.abs(n))}${unit}`;
 export const pctTxt = (p: number) => signed(Math.round(p * 100), '%');
-const trig = (t: {kind: string; name: string; tag?: string}) => `${t.tag ? `<span class="tag">${esc(t.tag)}</span>` : `<span class="tag">${esc(KIND[t.kind] || t.kind)}</span>`} ${esc(t.name)}`;
+export const trig = (t: {kind: string; name: string; tag?: string}) => `${t.tag ? `<span class="tag">${esc(t.tag)}</span>` : `<span class="tag">${esc(KIND[t.kind] || t.kind)}</span>`} ${esc(t.name)}`;
 const COND = {only: 'Only in', winter: 'Winter', climate: 'Climate', topography: 'Terrain', continent: 'Continent', sub_continent: 'Subcontinent',
   region: 'Region', disease: 'Disease', literacy: 'Literacy', market_unavailability: 'Unavailable'};
 function demandShifts(g: string) {

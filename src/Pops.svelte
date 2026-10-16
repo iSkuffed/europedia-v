@@ -1,7 +1,7 @@
 <script lang="ts">
   // Pops page: social classes, what each one buys, and what makes room for them / makes them promote.
   import { DATA, type PopSource } from './lib/data';
-  import { icon, fmt, gChip, bChip, pIcon, esc, KIND, signed, pctTxt, ROMAN, agePct } from './lib/production';
+  import { icon, fmt, gChip, bChip, pIcon, esc, KIND, signed, pctTxt, ROMAN, agePct, trig } from './lib/production';
   import { AGE } from './lib/age.svelte';
 
   let { id }: { id: string | null } = $props();
@@ -20,19 +20,42 @@
   let sortBy = $state<string | null>(null);
   const rows = $derived(sortBy ? [...wanted].sort((a, b) => demand(b, sortBy!) - demand(a, sortBy!)) : [...wanted].sort((a, b) => G[a].name.localeCompare(G[b].name)));
 
-  const isPct = (k: string) => k.endsWith('_modifier');
-  const modVal = (k: string, v: number) => isPct(k) ? pctTxt(v) : signed(v);
+  const modVal = (k: string, v: number) => k === 'cap_maximum_population_growth_at_zero' ? 'stops' : PI.pct.includes(k) ? signed(v * 100, '%') : signed(v);
+  // keys where a bigger number is worse for you
+  const bad = (k: string, v: number) => (v > 0) === (k.includes('demotion') || k.startsWith('cap_maximum'));
   const modName = (k: string) => PI.modNames[k] || k;
   const desiredKey = (p: string) => new RegExp(`^(local|global)_${p}_((city|rural)_)?desired_pop(_scaled)?$`);
   const SPEED = /pop_(promotion|demotion)_speed|tribal_promotion/;
   const srcName = (s: PopSource) => s.kind === 'building_types' ? bChip(s.id)
-    : `<span class="tag">${esc(s.tag || KIND[s.kind] || s.kind.replace(/_/g, ' ').replace(/s$/, ''))}</span> ${esc(s.name || s.id)}${s.age ? ` <i>(age ${ROMAN[s.age]})</i>` : ''}`;
+    : `<span class="tag">${esc(s.tag || KIND[s.kind] || s.kind.replace(/_/g, ' ').replace(/s$/, ''))}</span> ${esc(s.name || s.id)}${s.age ? ` <i>(age ${ROMAN[s.age]})</i>` : ''}`
+      + (s.by?.length ? `<div class="by">from ${s.by.slice(0, 3).map(trig).join(', ')}${s.by.length > 3 ? ` and ${s.by.length - 3} more` : ''}</div>`
+        : s.kind === 'modifier' ? `<div class="by">${s.note ? esc(s.note) : 'applied by the game'}</div>` : '');
   // sources whose modifiers match, buildings first, as [label, [key, value][]]
   // sources that unlock after the chosen age go last, dimmed
   const srcAge = (s: PopSource) => s.kind === 'building_types' ? B[s.id]?.age : s.age;
   const later = (s: PopSource) => !!AGE.v && (srcAge(s) || 0) > AGE.v;
   const sourcesFor = (re: RegExp) => PI.sources.map(s => [s, Object.entries(s.mods).filter(([k]) => re.test(k))] as const).filter(([, m]) => m.length)
     .sort(([a], [b]) => +later(a) - +later(b) || +(b.kind === 'building_types') - +(a.kind === 'building_types') || a.kind.localeCompare(b.kind));
+  // ---- population growth page
+  type Src = ReturnType<typeof sourcesFor>[number];
+  const GROWTH = /^(local|global)_population_growth$|^cap_maximum_population_growth_at_zero$/, CAP_FLAT = /_population_capacity$/, CAP_PCT = /population_capacity_modifier$/;
+  const STORE_FLAT = /_food_capacity$/, STORE_PCT = /food_capacity_modifier$/;
+  const CLASS_GROWTH = /^(local|global)_\w+_pop_growth$/;
+  // ranks and the every-location base count as sources here
+  const extra: PopSource[] = [{kind: 'base', id: 'base', name: 'Every location', mods: PI.base}, ...PI.ranks.map(r => ({kind: 'location_rank', id: r.id, name: r.name, mods: r.mods}))];
+  const growthSources = (re: RegExp) => [...extra.map(s => [s, Object.entries(s.mods).filter(([k]) => re.test(k))] as const).filter(([, m]) => m.length), ...sourcesFor(re)];
+  const helps = (l: Src[]) => l.filter(([, ms]) => ms.some(([k, v]) => !bad(k, v)));
+  const hurts = (l: Src[]) => l.filter(([, ms]) => ms.every(([k, v]) => bad(k, v)));
+  // available first, then flat before %, then biggest effect
+  const byVal = (l: Src[]) => [...l].sort(([a, am], [b, bm]) => +later(a) - +later(b) || +PI.pct.includes(am[0][0]) - +PI.pct.includes(bm[0][0]) || Math.abs(bm[0][1]) - Math.abs(am[0][1]));
+  const CHOICE = new Set(['advances', 'laws', 'government_reforms', 'estate_privileges', 'religious_aspects', 'cabinet_actions', 'building_types', 'town_rights',
+    'parliament_issues', 'societal_values', 'bureaucracies', 'religious_schools', 'gods', 'avatars', 'religious_order_callings']);
+  const chosen = (l: Src[], yes: boolean) => l.filter(([s]) => CHOICE.has(s.kind) === yes);
+  const best = $derived(byVal(chosen(helps(sourcesFor(GROWTH)), true).filter(([s]) => !s.tag && !later(s))).slice(0, 8));
+  // one modifier's value from a named static modifier, for the tips
+  const sv = (id: string, k: string) => PI.sources.find(s => s.id === id)?.mods[k] ?? 0;
+  const pctOf = (v: number) => signed(v * 100, '%');
+
   const promotedFrom = (p: string) => POPS.filter(q => T[q].promoteTo.includes(p));
   const pLink = (p: string) => `<a class="chip" href="#p/${p}">${pIcon(p)}${esc(P[p])}</a>`;
   let mainEl = $state<HTMLElement>();
@@ -44,10 +67,14 @@
     .reduce((m, [bid, b]) => ((m[CATS[b.cat] || b.cat || 'Other'] ??= []).push(bid), m), {} as Record<string, string[]>)).sort(([a], [b]) => a.localeCompare(b));
 </script>
 
-{#snippet sources(list: ReturnType<typeof sourcesFor>)}
-  {#each list as [s, ms]}
-    <div class="dm src" class:later={later(s)} title={later(s) ? `Unlocks in age ${ROMAN[srcAge(s)!]}` : undefined}><span class="v">{#each ms as [k, v]}<span class={v > 0 === !k.includes('demotion') ? 'up' : 'down'} title={modName(k)}>{modVal(k, v)}</span>{/each}</span><span>{@html srcName(s)}{#if ms.length > 1 || !/desired_pop$|promotion_speed$|tribal_promotion$/.test(ms[0][0])}{' '}<i>{ms.map(([k]) => modName(k)).join(', ')}</i>{/if}</span></div>
-  {/each}
+<!-- plain: keys whose name the card heading already says -->
+{#snippet sources(list: ReturnType<typeof sourcesFor>, plain = /desired_pop$|promotion_speed$|tribal_promotion$/, max = 0)}
+  {#if max && list.length > max + 3}
+    {@render sources(list.slice(0, max), plain)}
+    <details><summary>{list.length - max} more</summary>{@render sources(list.slice(max), plain)}</details>
+  {:else}{#each list as [s, ms]}
+    <div class="dm src" class:later={later(s)} title={later(s) ? `Unlocks in age ${ROMAN[srcAge(s)!]}` : undefined}><span class="v">{#each ms as [k, v]}<span class={bad(k, v) ? 'down' : 'up'} title={modName(k)}>{modVal(k, v)}</span>{/each}</span><span>{#if ms.length > 1 || !plain.test(ms[0][0])}<i class="mk">{ms.map(([k]) => modName(k)).join(', ')}</i>{/if}{@html srcName(s)}</span></div>
+  {/each}{/if}
 {/snippet}
 
 <div class="layout">
@@ -55,12 +82,46 @@
     <h3>Pops</h3>
     <div class="blist">
       <a href="#pops" class:on={!id}><img class="ic" src="icons/misc/all_pops.png" alt="">Overview</a>
+      <a href="#p/growth" class:on={id === 'growth'}><img class="ic" src="icons/misc/growth.png" alt="">Population growth</a>
       {#each POPS as p}<a href="#p/{p}" class:on={id === p}>{@html icon('pops', p, P[p])}{P[p]}{#if T[p].upper}<span class="tag up-tag">upper</span>{/if}</a>{/each}
     </div>
   </aside>
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <main bind:this={mainEl} onclick={toggle}>
-    {#if id && T[id]}
+    {#if id === 'growth'}
+      {@const F = PI.food}
+      <div class="title lg"><img class="ic" src="icons/misc/growth.png" alt=""><div><h2>Population growth</h2>
+        <p class="desc">{PI.text.population_growth}</p><p class="desc">{PI.text.population_capacity}</p></div></div>
+      <div class="pcards">
+        <section class="card"><h4 class="out">Getting the most out of it</h4>
+          <ol class="tips">
+            <li><b>Feed them.</b> Every point of food surplus in the province adds <span class="up">{pctOf(F.FOOD_SURPLUS_POP_GROWTH)}</span> growth, every point of stored food <span class="up">{pctOf(F.FOOD_STORAGE_POP_GROWTH)}</span>.
+              A starving province gets <span class="down">{pctOf(sv('province_starving', 'local_population_growth'))}</span> and demotes {pctOf(sv('province_starving', 'local_pop_demotion_speed_modifier'))} faster. Cheap local food adds up to <span class="up">{pctOf(sv('cheap_food_in_location', 'local_population_growth'))}</span>.</li>
+            <li><b>Stay under capacity.</b> Over it, growth stops and pops demote {pctOf(sv('overpopulation', 'local_pop_demotion_speed_modifier'))} faster. Near it you get <span class="down">{pctOf(sv('approaching_capacity', 'local_population_growth'))}</span>.
+              Nearly empty land (under 10% of capacity and 10k people) grows <span class="up">{pctOf(sv('abundant_free_land', 'local_population_growth'))}</span> faster. Raise capacity with town and city ranks, rivers, the coast and good climates: see Population capacity.</li>
+            <li><b>Keep prosperity up.</b> Full prosperity adds <span class="up">{pctOf(sv('prosperity', 'local_population_growth'))}</span>; devastation costs up to <span class="down">{pctOf(-sv('devastation', 'local_population_growth'))}</span>.</li>
+            <li><b>Stack the biggest picks</b>{AGE.v ? ` available in Age ${ROMAN[AGE.v]}` : ''}:{@render sources(best, GROWTH)}</li>
+            <li><b>Avoid</b> sieges, looting, disease and famine: see Hurts growth.</li>
+          </ol>
+        </section>
+        <section class="card"><h4 class="out">Growth you can pick</h4>
+          <p class="meta">Buildings, advances, laws, reforms, privileges and other choices.</p>
+          {@render sources(byVal(chosen(helps(growthSources(GROWTH)), true)), GROWTH, 15)}</section>
+        <section class="card"><h4 class="out">Growth from events and conditions</h4>
+          {@render sources(byVal(chosen(helps(growthSources(GROWTH)), false)), GROWTH, 15)}</section>
+        <section class="card"><h4 class="in">Hurts growth</h4>
+          {@render sources(byVal(hurts(growthSources(GROWTH))), GROWTH, 15)}</section>
+        <section class="card"><h4 class="gold"><span><img class="hic" src="icons/misc/capacity.png" alt="">Population capacity</span></h4>
+          <div class="dsec"><span class="flbl">People</span>{@render sources(byVal(growthSources(CAP_FLAT)), CAP_FLAT, 15)}</div>
+          <div class="dsec"><span class="flbl">Percent</span>{@render sources(byVal(growthSources(CAP_PCT)), CAP_PCT, 15)}</div></section>
+        <section class="card"><h4 class="gold"><span><img class="hic" src="icons/misc/food_storage.png" alt="">Food storage</span></h4>
+          <p class="meta">Stored food adds growth ({pctOf(F.FOOD_STORAGE_POP_GROWTH)} per point), so more room to store it helps.</p>
+          <div class="dsec"><span class="flbl">Amount</span>{@render sources(byVal(growthSources(STORE_FLAT)), STORE_FLAT, 15)}</div>
+          <div class="dsec"><span class="flbl">Percent</span>{@render sources(byVal(growthSources(STORE_PCT)), STORE_PCT, 15)}</div></section>
+        <section class="card"><h4 class="pop">Growth of one class</h4>
+          {@render sources(byVal(growthSources(CLASS_GROWTH)), /^$/)}</section>
+      </div>
+    {:else if id && T[id]}
       {@const t = T[id]}
       <div class="title lg">{@html icon('pops', id, P[id])}<div><h2>{P[id]}</h2>
         <div class="meta"><span>{t.upper ? 'Upper class' : 'Lower class'}</span>{#if t.estate}<span>{t.estate} estate</span>{/if}</div>
@@ -139,7 +200,7 @@
             <tbody>{#each PI.ranks as r}<tr><td>{r.name}</td><td class="n">{r.minPop ? fmt(r.minPop) + '+' : ''}</td>
               {#each ['burghers', 'laborers', 'soldiers', 'nobles', 'clergy'] as p}<td class="n">{fmt(r.mods[`local_${p}_desired_pop`]) || '–'}</td>{/each}
               <td class="n">{r.mods.local_pop_promotion_speed_modifier ? pctTxt(r.mods.local_pop_promotion_speed_modifier) : '–'}</td></tr>{/each}</tbody></table>
-          <p class="meta">"Possible" pops added by the rank. Every location also has room for {fmt(PI.base.local_clergy_desired_pop_scaled)} clerics and {fmt(PI.base.local_nobles_desired_pop_scaled)} nobles per 1,000 population.</p>
+          <p class="meta">"Possible" pops added by the rank. Every location also gets {#each Object.entries(PI.base).filter(([k]) => k.endsWith('desired_pop_scaled')) as [k, v], i}{i ? ' and ' : ''}{modVal(k, v)} {modName(k)}{/each}.</p>
         </section>
         <section class="card"><h4 class="gold">How pops promote</h4>
           {#each POPS.filter(p => T[p].promoteTo.length) as p}

@@ -45,13 +45,20 @@ export interface PopType {
   literacy: [string, number | null][];  // what their literacy gives the location
   share: [string, number | null][];     // what their share of the population gives
 }
-export interface PopSource { kind: string; id: string; name?: string; mods: Record<string, number>; age?: number; tag?: string }
+export interface PopSource {
+  kind: string; id: string; name?: string; mods: Record<string, number>; age?: number; tag?: string;
+  by?: Trigger[];  // static modifiers: events / decisions that apply them (none = the game applies it itself)
+  note?: string;   // static modifiers: the game files' comment on how it scales
+}
 export interface PopInfo {
   types: Record<string, PopType>;
   ranks: {id: string; name: string; mods: Record<string, number>; minPop: number | null}[];  // rural settlement -> megalopolis
   base: Record<string, number>;  // every location
   sources: PopSource[];  // buildings, advances, laws... that make room for pops or change promotion speed
   modNames: Record<string, string>;
+  pct: string[];  // modifier keys the game shows as percentages
+  food: Record<'FOOD_SURPLUS_POP_GROWTH' | 'FOOD_STORAGE_POP_GROWTH' | 'STARVING_ON_FOOD_DEMAND', number>;
+  text: Record<'population_growth' | 'population_capacity', string>;  // the game's concept descriptions
 }
 export interface Building {
   name: string;

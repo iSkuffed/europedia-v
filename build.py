@@ -283,6 +283,13 @@ for f, k, v in tree(f'{MM}/static_modifiers'):
         if g and (g == '*' or g in GOODS) and val(lv) is not None:
             static_mods.setdefault(k, {})[g] = val(lv)
 
+# modifier keys that make room for a pop type or move pops between types
+POP_KEY = re.compile(r'(local|global)_(\w+?)_(?:(city|rural)_)?desired_pop(_scaled)?$|(local|global)_pop_(promotion|demotion)_speed(_modifier)?$|local_tribal_promotion$'
+                     r'|(local|global)_(\w+_pop|population)_growth$|(local|global|total)_population_capacity(_modifier)?$|(local|global)_food_capacity(_modifier)?$'
+                     r'|cap_maximum_population_growth_at_zero$')
+pop_keys = lambda blk: {k: 1 if x == 'yes' else val(x) for k, x in leaves(blk) if POP_KEY.match(k) and (x == 'yes' or val(x) is not None)}
+pop_static = {k: m for f, k, v in tree(f'{MM}/static_modifiers') if k != 'location_base_values' and (m := pop_keys(v))}
+
 # who applies those static modifiers (events, decisions, ...), and every temporary demand an event adds
 appliers, temp_demand = {}, {}
 
@@ -320,7 +327,7 @@ for root, folder_of in ((f'{GAME}/in_game/events', lambda f: 'events'),
                             yield 'temp', d, bv
                     else:
                         yield from find(bv)
-                elif bk == 'modifier' and bv in static_mods:
+                elif bk == 'modifier' and (bv in static_mods or bv in pop_static):
                     yield 'mod', bv, None
         for kind, x, bv in find(v):
             who = who or {'kind': folder, 'id': k, **title(folder, k, v)}
@@ -373,7 +380,7 @@ for d in ('culture_groups', 'cultures', 'religion_groups', 'religions'):
 # ---- pops: social classes, where they come from, what makes room for them -------------------
 def text(s):  # concept text: [pops|e] -> pops, [ShowPopTypeName('burghers')] -> Burghers
     s = re.sub(r"\[Show\w*?Name\w*\('(\w+)'\)\]", lambda m: pops.get(m.group(1)) or name(m.group(1), m.group(1)), resolve(s))
-    s = re.sub(r'\[(\w+)\|\w+\]', lambda m: clean(loc.get(m.group(1), m.group(1).replace('_', ' '))).lower(), s)
+    s = re.sub(r'\[(\w+)(?:\|\w+)?\]', lambda m: clean(loc.get(m.group(1), m.group(1).replace('_', ' '))).lower(), s)
     return clean(re.sub(r'\[[^\]]*\]', '…', s))
 
 
@@ -393,9 +400,6 @@ for p, v in load('pop_types').items():
         'share': [[mod_name(k), val(x)] for k, x in items(get(v, 'pop_percentage_impact') or [])],
     }
 
-# modifier keys that make room for a pop type or move pops between types
-POP_KEY = re.compile(r'(local|global)_(\w+?)_(?:(city|rural)_)?desired_pop(_scaled)?$|(local|global)_pop_(promotion|demotion)_speed(_modifier)?$|local_tribal_promotion$')
-pop_keys = lambda blk: {k: val(x) for k, x in leaves(blk) if POP_KEY.match(k) and val(x) is not None}
 ranks = []
 for k, v in load('location_ranks').items():
     allow = get(v, 'allow') or []
@@ -406,6 +410,16 @@ for f, k, v in tree(f'{MM}/static_modifiers'):
     if k == 'location_base_values':
         base = pop_keys(v)
 pop_sources = [{'kind': 'building_types', 'id': k, 'mods': m} for k, v in load('building_types').items() if (m := pop_keys(v))]
+# the comment above a static modifier says how the game scales it ("multiplies with prosperity in location (0 to 1)")
+notes = {m.group(2): ' '.join(l.lstrip('# ').strip() for l in m.group(1).splitlines() if l.strip('# '))
+         for f in glob.glob(f'{MM}/static_modifiers/*.txt') for m in re.finditer(r'((?:^#.*\n)+)(\w+)\s*=\s*\{', open(f, encoding='utf-8-sig').read(), re.M)}
+for k, m in pop_static.items():  # starving, overpopulation, river, capital... (applied by the game itself, or by events)
+    n = f'STATIC_MODIFIER_NAME_{k}'
+    nm = text(loc[n]) if n in loc else name(k, k)
+    e = {'kind': 'modifier', 'id': k, 'name': nm[:1].upper() + nm[1:], 'mods': m, 'by': appliers.get(k, [])}
+    if notes.get(k) and not set(notes[k]) <= set('#-= '):
+        e['note'] = notes[k]
+    pop_sources.append(e)
 for d in sorted(os.listdir(C)):
     if not os.path.isdir(f'{C}/{d}') or d in ('building_types', 'location_ranks', 'pop_types', 'goods', 'production_methods'):
         continue
@@ -417,8 +431,14 @@ for d in sorted(os.listdir(C)):
             if d in ('advances', 'laws', 'estate_privileges') and (m := re.match(r'([a-z]{3})_', k)) and m.group(1).upper() in loc:  # hun_strengthened_towns -> Hungary only
                 e['tag'] = clean(loc[m.group(1).upper()])
             pop_sources.append(e)
-pop_info = {'types': pop_types, 'ranks': ranks[::-1], 'base': base, 'sources': pop_sources,
+defines = open(f'{GAME}/loading_screen/common/defines/00_defines.txt', encoding='utf-8-sig').read()
+define = lambda k: float(re.search(rf'\b{k}\s*=\s*([\d.]+)', defines).group(1))
+pop_info = {'food': {k: define(k) for k in ('FOOD_SURPLUS_POP_GROWTH', 'FOOD_STORAGE_POP_GROWTH', 'STARVING_ON_FOOD_DEMAND')},
+            'types': pop_types,
+            'text': {k: text(loc[f'game_concept_{k}_desc']) for k in ('population_growth', 'population_capacity')}, 'ranks': ranks[::-1], 'base': base, 'sources': pop_sources,
             'modNames': {k: mod_name(k) for s in [base, *[r['mods'] for r in ranks], *[s['mods'] for s in pop_sources]] for k in s}}
+mod_types = {k: v for f, k, v in tree(f'{MM}/modifier_type_definitions')}
+pop_info['pct'] = sorted(k for k in pop_info['modNames'] if get(mod_types.get(k, []), 'percent') == 'yes')
 
 # conditions that scale a good's pop demand (winter, climate, region...) or limit it to one area
 COND = ('winter', 'climate', 'topography', 'continent', 'sub_continent', 'region')
@@ -461,3 +481,5 @@ assert any(a['id'] == 'anglican_events.11' for m in demand_mods['fine_cloth'] if
 assert pop_info['types']['peasants']['promoteTo'] == ['burghers', 'clergy', 'nobles', 'laborers', 'soldiers']
 assert [r['id'] for r in pop_info['ranks']] == ['rural_settlement', 'town', 'city', 'megalopolis'] and pop_info['ranks'][2]['minPop'] == 30
 assert pop_info['base']['local_nobles_desired_pop_scaled'] == 0.0025 and goods['camels']['cond']['only'][-1] == 'Western India'
+assert any(s['id'] == 'overpopulation' for s in pop_info['sources']) and pop_info['food']['FOOD_SURPLUS_POP_GROWTH'] == 0.0015
+assert 'local_population_growth' in pop_info['pct'] and 'local_population_capacity' not in pop_info['pct']
