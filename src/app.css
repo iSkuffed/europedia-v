@@ -14,6 +14,7 @@ a { color: inherit; text-decoration: none; }
 header { display: flex; gap: 16px; align-items: center; padding: 8px 16px; position: sticky; top: 0; z-index: 5;
   background: linear-gradient(#6a4528, #3b2414); border-bottom: 2px solid var(--frame); box-shadow: 0 2px 8px #000a; }
 header h1 { font-size: 20px; margin: 0; color: var(--gold); letter-spacing: .5px; white-space: nowrap; text-shadow: 0 1px 2px #000; }
+header h1 .beta { margin-left: 8px; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; vertical-align: 3px; padding: 1px 5px; border: 1px solid var(--frame); border-radius: 2px; color: var(--dim); text-shadow: none; cursor: help; }
 header nav a { color: #d9c9a3; padding: 4px 12px; border: 1px solid transparent; border-radius: 3px; }
 header nav a.on { color: var(--gold); background: #0006; border-color: var(--frame); }
 #search { flex: 1; max-width: 420px; background: #0d1117e6; color: var(--text); border: 1px solid var(--frame); border-radius: 18px; padding: 6px 14px; }
@@ -303,7 +304,7 @@ img.hic { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; 
 .chip.nat { gap: 0; padding-left: 6px; }
 .natgrid { display: flex; flex-wrap: wrap; gap: 2px; }
 /* nation flags: in lists, and framed on the title plate */
-.fl { display: inline-block; flex: none; width: 21px; height: 14px; border: 1px solid #000; box-shadow: 0 0 0 1px #ffffff22; overflow: hidden; vertical-align: -2px; margin-right: 6px; }
+.fl:not(.fx .fl) { display: inline-block; flex: none; width: 21px; height: 14px; border: 1px solid #000; box-shadow: 0 0 0 1px #ffffff22; overflow: hidden; vertical-align: -2px; margin-right: 6px; }
 .blist .fl { margin-right: 0; }
 .popbar .pd.tot { margin-right: 8px; box-shadow: 4px 0 0 -2px var(--frame); }
 .popbar .pd.tot b { color: var(--text); }
