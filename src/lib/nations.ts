@@ -9,7 +9,7 @@ export interface Nation {
   cul: Record<string, number>; rel: Record<string, number>;  // starting pops in thousands by culture / religion, biggest first
   over: [string, string] | null;  // overlord tag, subject type
 }
-// location: name, raw good, map x, map z (north is bigger), owner tag, rank (0 rural / 1 town / 2 city), area index
+// location: name, raw good, map x, map z (north is bigger), owner tag, rank (0 rural / 1 town / 2 city / 3 megalopolis), area index
 export type Loc = [string, string, number, number, string, number, number];
 export interface NationData { locs: Loc[]; areas: string[]; countries: Record<string, Nation>; relColors?: Record<string, string> }
 

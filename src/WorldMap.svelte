@@ -47,7 +47,7 @@
   // population on the game's log scale: 1,000 people at the bottom, x4.7934 a step (the legend's 4,793 / 22,977 / 110K / 527K)
   const POP_STOPS = [0, 1, 2, 3, 4].map(k => 1000 * 527.96 ** (k / 4));
   const popT = (p: number) => p > 1000 ? Math.log(p / 1000) / Math.log(527.96) : 0;
-  const RANK_NAME = ['Rural', 'Town', 'City'];
+  const RANK_NAME = ['Rural', 'Town', 'City', 'Megalopolis'];
   // water by distance from land (half raster px): the shallows' cyan glow down to the open ocean; 255 = off the map
   const SEA_STOPS: [number, string][] = [[0, '#64ccd9'], [4, '#4cb4d8'], [10, '#3592c8'], [20, '#2b74b2'], [40, '#2a62a8'], [80, '#2b4f92']];
   const SHALLOW = hex('#64ccd9'), OFFMAP = hex('#2a2520');

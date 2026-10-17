@@ -497,7 +497,7 @@ over = {}
 for a, b, t in re.findall(r'dependency\s*=\s*\{\s*first\s*=\s*(\w+)\s+second\s*=\s*(\w+)\s+subject_type\s*=\s*(\w+)', open(f'{SETUP}/12_diplomacy.txt', encoding='utf-8-sig').read()):
     over[b] = [a, name(t, f'subject_type_{t}_name', t)]
 L, idx, areas, countries = [], {}, [], {}
-RANK = {'town': 1, 'city': 2}
+RANK = {'town': 1, 'city': 2, 'megalopolis': 3}
 def lidx(l):
     if l not in idx:
         a = area_of.get(l, '')
@@ -610,7 +610,7 @@ else:
     print(f'warning: no save at {SAVE}, no development map mode')
 goods_col = {g: colors[f'goods_{g}'] for g in {l[1] for l in L if l[1]} if f'goods_{g}' in colors}
 rank_defs = load('location_ranks')
-rank_col = [[name(k, k), col(get(rank_defs[k], 'color'))] for k in ('rural_settlement', 'town', 'city')]
+rank_col = [[name(k, k), col(get(rank_defs[k], 'color'))] for k in ('rural_settlement', 'town', 'city', 'megalopolis')]
 with open(f'{OUT}/public/mapinfo.json', 'w') as f:
     json.dump({'sets': sets, 'locs': cls, 'goods': goods_col, 'ranks': rank_col}, f, separators=(',', ':'), ensure_ascii=False)
 assert all(len(v) == len(L) for v in cls.values())

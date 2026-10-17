@@ -40,7 +40,7 @@ export interface MapInfo {
   sets: Record<'topo' | 'veg' | 'climate' | 'culture' | 'religion', Set_>;
   locs: Record<'topo' | 'veg' | 'climate' | 'culture' | 'religion', number[]> & {pop: number[]; harbor: number[]; dev?: number[]};
   goods: Record<string, [number, number, number]>;  // the game's map colour per raw good
-  ranks: Set_;                                      // rural settlement, town, city
+  ranks: Set_;                                      // rural settlement, town, city, megalopolis
 }
 let infoCache: Promise<MapInfo> | undefined;
 export const loadMapInfo = () => infoCache ??= fetch('mapinfo.json').then(r => r.json());
