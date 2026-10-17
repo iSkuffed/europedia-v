@@ -8,8 +8,8 @@
     who?: Clause[]; whoText?: string; uniq?: string[]; req?: Clause[]; reqText?: string;
   }
   export interface AdvData { ages: Record<string, string>; focus: Record<string, string>; advances: Adv[] }
-  let cache: Promise<AdvData> | undefined;
-  export const loadAdvances = () => cache ??= fetch('advances.json').then(r => r.json());
+  import { loadAdvances as loadAll } from './lib/cards';
+  export const loadAdvances = (): Promise<AdvData> => loadAll();
   let textCache: Promise<Record<string, string>> | undefined;  // descriptions, only needed on a detail page
   export const loadAdvanceText = () => textCache ??= fetch('advance_text.json').then(r => r.ok ? r.json() : {});
 </script>

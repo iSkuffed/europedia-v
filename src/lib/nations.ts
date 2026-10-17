@@ -5,7 +5,8 @@ import { popDemand } from './production';
 export interface Nation {
   name: string; cap: number | null; locs: number[]; color: [number, number, number] | null;
   pops: Record<string, number>;  // starting pops in thousands, by type
-  culture: string | null; religion: string | null; rank: string;
+  culture: string | null; religion: string | null; rank: string;  // official primary culture and religion
+  cul: Record<string, number>; rel: Record<string, number>;  // starting pops in thousands by culture / religion, biggest first
   over: [string, string] | null;  // overlord tag, subject type
 }
 // location: name, raw good, map x, map z (north is bigger), owner tag, rank (0 rural / 1 town / 2 city), area index
@@ -25,6 +26,9 @@ export interface Start { gov?: string; privileges: string[]; laws: Record<string
 export interface StartData { date: string; setup: string; axes: string[]; axisNames: [string, string][]; names: Record<string, string>; estateOf: Record<string, string>; countries: Record<string, Start> }
 let startCache: Promise<StartData | null> | undefined;
 export const loadStart = () => startCache ??= fetch('start.json').then(r => r.ok ? r.json() : null).catch(() => null);
+// public/start_adv.json (start.py): advances researched at the start, as indexes into `ids`
+let advCache: Promise<{ids: string[]; countries: Record<string, number[]>} | null> | undefined;
+export const loadStartAdv = () => advCache ??= fetch('start_adv.json').then(r => r.ok ? r.json() : null).catch(() => null);
 
 // public/map.png: one pixel per 8x8 map units, red * 256 + green = 0 water, 1 wasteland, i + 2 = locs[i]
 export const MAP_SCALE = 8;

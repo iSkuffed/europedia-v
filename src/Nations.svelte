@@ -3,8 +3,10 @@
   import { DATA } from './lib/data';
   import { gChip, pIcon, pName, fmt, esc, popDemand, icon } from './lib/production';
   import NationMap from './NationMap.svelte';
-  import { loadNations, loadUnique, loadStart, analyse, subjectsOf, UPPER, type NationData, type Unique, type StartData } from './lib/nations';
-  import { preloadCards } from './lib/cards';
+  import Donut from './Donut.svelte';
+  import type { Adv } from './Research.svelte';
+  import { loadNations, loadUnique, loadStart, loadStartAdv, analyse, subjectsOf, UPPER, type NationData, type Unique, type StartData } from './lib/nations';
+  import { preloadCards, loadAdvances } from './lib/cards';
   preloadCards();
 
   let { tag }: { tag: string | null } = $props();
@@ -14,6 +16,16 @@
   let S = $state<StartData | null>(null);
   loadStart().then(d => S = d);
   const st = $derived(tag ? S?.countries[tag] : undefined);
+  // advances researched at the start: the ones only some nations get first, the rest folded
+  let SA = $state<Awaited<ReturnType<typeof loadStartAdv>>>(null), ADV = $state<Record<string, Adv>>({});
+  loadStartAdv().then(d => SA = d);
+  loadAdvances().then(d => ADV = Object.fromEntries((d.advances as Adv[]).map(a => [a.id, a])));
+  const research = $derived.by(() => {
+    const idx: number[] = (tag && SA?.countries[tag]) || [];
+    const list = idx.map(i => ADV[SA!.ids[i]]).filter(Boolean).sort((a, b) => a.age - b.age || a.name.localeCompare(b.name));
+    return {all: list, uniq: list.filter(a => a.uniq?.length), common: list.filter(a => !a.uniq?.length)};
+  });
+  const CLASS_ORDER = ['peasants', 'tribesmen', 'clergy', 'nobles', 'burghers', 'slaves'];  // fixed colour per class
   const sn = (id: string) => S?.names[id] ?? id;
   // starting privileges by estate, in the game's estate order
   const ESTATES = ['crown_estate', 'nobles_estate', 'clergy_estate', 'burghers_estate', 'peasants_estate'];
@@ -73,6 +85,8 @@
   const locName = (i: number | null) => i == null ? '' : N!.locs[i][0];
 </script>
 
+{#snippet advChip(a: Adv)}<a class="chip adv" href="#r/{a.id}">{#if a.icon}<img class="ic" src="icons/advances/{a.icon}.png" alt="" loading="lazy">{/if}{a.name}</a>{/snippet}
+
 <div class="layout">
   <aside>
     <h3>Nations in 1337</h3>
@@ -91,7 +105,7 @@
       <div class="title nation">
         {#key tag}<span class="bigflag" style="background:{swatch(tag)}"><img src="flags/{tag}.png" alt="" onerror={e => (e.currentTarget as HTMLElement).remove()}></span>{/key}
         <div><h2>{c.name}</h2>
-          <div class="meta"><span>{c.rank}</span>{#if c.culture}<span>{c.culture}</span>{/if}{#if c.religion}<span>{c.religion}</span>{/if}<span>capital {locName(c.cap)}</span><span>{c.locs.length} locations</span></div>
+          <div class="meta">{#if c.rank}<span>{c.rank}</span>{/if}{#if c.culture}<span>{c.culture}</span>{/if}{#if c.religion}<span>{c.religion}</span>{/if}<span>capital {locName(c.cap)}</span><span>{c.locs.length} locations</span></div>
           {#if c.over}<p class="desc">{c.over[1]} of {@html nLink(c.over[0])}</p>{/if}
           {#if subs.length}<p class="desc">Subjects: {@html subs.map(nLink).join('')}
             <label class="tgl"><input type="checkbox" bind:checked={withSubjects}> count their land</label></p>{/if}
@@ -129,6 +143,15 @@
             </div>
           </section>
 
+          <section class="card"><h4 class="pop">Population<small>{kPeople(popTotal(tag))} people in your own locations</small></h4>
+            <div class="donuts">
+              <Donut title="Classes" parts={c.pops} order={CLASS_ORDER} label={pName} iconOf={pIcon} />
+              <Donut title="Cultures" parts={c.cul} />
+              <Donut title="Religions" parts={c.rel} />
+            </div>
+            <p class="meta">Pops as placed in 1337, subjects not counted. Hover a slice for the number of people.</p>
+          </section>
+
           {#if st}
             <section class="card"><h4 class="gold">Starting position<small>{st.gov ? sn(st.gov) : ''}</small></h4>
               {#if st.reforms.length}<div class="flbl">Government reforms</div>
@@ -146,8 +169,19 @@
                   <div class="sv"><span>{S!.axisNames[i][0]}</span><span class="svbar"><i style="left:{(st.values[i]! + 100) / 2}%"></i></span><span>{S!.axisNames[i][1]}</span></div>
                 {/if}{/each}
               </details>
-              <p class="meta">From a save of the 1337 start: privileges, laws and reforms as granted at setup; societal values as of {S!.date}.
+              <p class="meta">From a save on the first day, {S!.date}: privileges, laws, reforms and societal values as the game sets them up.
                 Crown power and estate power aren't stored in saves (the game works them out as it runs), so they aren't shown.</p>
+            </section>
+          {/if}
+
+          {#if research.all.length}
+            <section class="card"><h4 class="gold">Research<small>{research.all.length} advances known at the start</small></h4>
+              {#if research.uniq.length}<div class="flbl">Not everyone starts with these</div>
+                <div class="advs">{#each research.uniq as a (a.id)}{@render advChip(a)}{/each}</div>{/if}
+              {#if research.common.length}<details class="ugroup"><summary>Common advances<span class="cnt">{research.common.length}</span></summary>
+                <div class="advs">{#each research.common as a (a.id)}{@render advChip(a)}{/each}</div>
+              </details>{/if}
+              <p class="meta">From the same 1337 save. The first group is advances locked to a country, culture, religion or region, or with other conditions; hover one for what it gives.</p>
             </section>
           {/if}
 

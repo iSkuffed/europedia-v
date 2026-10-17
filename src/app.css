@@ -335,6 +335,8 @@ img.hic { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; 
 .dm.nr { grid-template-columns: 3em 1fr; }
 .ncols { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 0 16px; align-items: start; }
 .ncols > div > .card { margin-bottom: 16px; }
+.donuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 18px; margin: 4px 0 8px; }
+.advs { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
 .ugroup { margin: 0 0 6px; }
 .sp { display: grid; grid-template-columns: 8.5em 1fr; gap: 8px; align-items: center; padding: 3px 0; border-top: 1px solid #ffffff0d; }
 .sp .who { display: flex; align-items: center; gap: 6px; color: var(--dim); }

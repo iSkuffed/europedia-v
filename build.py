@@ -481,9 +481,11 @@ def rgb(kind, a, b, c):
     return [round(x * 255) for x in colorsys.hsv_to_rgb(h, s, v)]
 colors = {m[0]: rgb(*m[1:]) for f in glob.glob(f'{MM}/named_colors/*.txt')
           for m in re.findall(r'(\w+)\s*=\s*(rgb|hsv360|hsv)\s*\{\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)', open(f, encoding='utf-8-sig').read())}
-ccol = {}
+ccol, official = {}, {}  # official: tag -> (primary culture, religion) as the game sets them
 for f in glob.glob(f'{GAME}/in_game/setup/countries/*.txt'):
     for k, _, v in parse(open(f, encoding='utf-8-sig').read()):
+        if isinstance(v, list):
+            official[k] = (get(v, 'culture_definition'), get(v, 'religion_definition'))
         c = isinstance(v, list) and get(v, 'color')
         if isinstance(c, str) and c in colors:
             ccol[k] = colors[c]
@@ -515,9 +517,12 @@ for tag, _, b in get(get(setup('10_countries.txt'), 'countries'), 'countries'):
     for t, c, r, n in (p for l in locs for p in loc_pops.get(l, [])):
         tot[t] = round(tot.get(t, 0) + n, 3); cul[c] = cul.get(c, 0) + n; rel[r] = rel.get(r, 0) + n
     top = lambda d: name(max(d, key=d.get), max(d, key=d.get)) if d else None
+    by = lambda d: {name(k, k): round(n, 3) for k, n in sorted(d.items(), key=lambda x: -x[1]) if n}  # name -> thousands
+    oc, orl = official.get(tag, (None, None))
     cap = get(b, 'capital')
     countries[tag] = {'name': name(tag, tag), 'cap': lidx(cap) if cap in pos else None, 'locs': [idx[l] for l in locs],
-                      'color': ccol.get(tag), 'pops': tot, 'culture': top(cul), 'religion': top(rel),
+                      'color': ccol.get(tag), 'pops': tot, 'culture': name(oc, oc) if oc else top(cul), 'religion': name(orl, orl) if orl else top(rel),
+                      'cul': by(cul), 'rel': by(rel),
                       'over': over.get(tag), 'rank': name(get(b, 'country_rank') or '', get(b, 'country_rank') or '')}
 for l in pos:  # every other land location with a raw good, unowned or not, so neighbours can be listed
     if get(tmpl.get(l, []), 'raw_material'):
