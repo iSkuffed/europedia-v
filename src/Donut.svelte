@@ -1,9 +1,9 @@
 <script lang="ts">
   // Part-to-whole donut: the biggest five shares plus "Other", with a legend. Colours are the dataviz
-  // categorical slots, checked against the card background; `order` pins a colour to each key
-  // (pop classes), otherwise colours go by size. Values are thousands of people.
-  let { title, parts, order, label = (k: string) => k, iconOf }: {
-    title: string; parts: Record<string, number>; order?: string[]; label?: (k: string) => string; iconOf?: (k: string) => string;
+  // categorical slots, checked against the card background; `colors` gives keys their own (game) colour,
+  // the rest take the next free slot by size. Values are thousands of people.
+  let { title, parts, colors, label = (k: string) => k, iconOf }: {
+    title: string; parts: Record<string, number>; colors?: Record<string, string>; label?: (k: string) => string; iconOf?: (k: string) => string;
   } = $props();
   const SLOTS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9'], OTHER = '#6b7280';
   const R = 42, W = 14;  // ring radius and width in the 100×100 box
@@ -13,7 +13,8 @@
     const total = all.reduce((s, e) => s + e[1], 0);
     const shown = all.length <= 6 ? all : all.slice(0, 5);
     const rest = all.slice(shown.length);
-    const out = shown.map(([k, n], i) => ({k, name: label(k), n, color: SLOTS[order ? order.indexOf(k) : i] ?? OTHER}));
+    let slot = 0;
+    const out = shown.map(([k, n]) => ({k, name: label(k), n, color: colors?.[k] ?? SLOTS[slot++] ?? OTHER}));
     if (rest.length) out.push({k: '', name: `Other (${rest.length})`, n: rest.reduce((s, e) => s + e[1], 0), color: OTHER});
     let a = 0;
     return {total, count: all.length, list: out.map(s => ({...s, f: s.n / total, a0: a, a1: a += s.n / total}))};
@@ -54,7 +55,7 @@
   .sub { fill: var(--dim); font-size: 7px; letter-spacing: .5px; text-anchor: middle; dominant-baseline: central; }
   ul { list-style: none; margin: 0; padding: 0; font-size: 13px; }
   li { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
-  li i { flex: none; width: 10px; height: 10px; border-radius: 2px; }
+  li i { flex: none; width: 10px; height: 10px; border-radius: 2px; box-shadow: inset 0 0 0 1px #0006; }
   li :global(img.ic) { width: 18px; height: 18px; }
   .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   li b { color: var(--dim); font-weight: 500; font-variant-numeric: tabular-nums; }

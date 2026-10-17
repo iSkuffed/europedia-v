@@ -5,6 +5,7 @@
   import Nations from './Nations.svelte';
   import Privileges from './Privileges.svelte';
   import Research from './Research.svelte';
+  import WorldMap from './WorldMap.svelte';
   import { DATA } from './lib/data';
   import { AGE, setAge } from './lib/age.svelte';
   import { loadNations, type NationData } from './lib/nations';
@@ -14,8 +15,9 @@
   let hash = $state(location.hash);
   const isPops = $derived(/^#(pops|p\/)/.test(hash)), isNations = $derived(/^#n(\/|$)/.test(hash));
   const isPriv = $derived(/^#e(\/|$)/.test(hash)), isResearch = $derived(/^#r(\/|$)/.test(hash));
+  const isMap = $derived(/^#m(\/|$)/.test(hash));
   // the Production Chains page renders itself into the aside / main panes while it is shown
-  $effect(() => { if (!isPops && !isNations && !isPriv && !isResearch && side && main) return untrack(() => mountProduction(side!, main!)); });
+  $effect(() => { if (!isPops && !isNations && !isPriv && !isResearch && !isMap && side && main) return untrack(() => mountProduction(side!, main!)); });
 
   // nations join the search once it's first focused (their file is big)
   let N = $state<NationData>();
@@ -34,7 +36,7 @@
 
 <header>
   <h1>Europedia V</h1>
-  <nav><a href="#/" class:on={!isPops && !isNations && !isPriv && !isResearch}>Production Chains</a><a href="#pops" class:on={isPops}>Pops</a><a href="#n" class:on={isNations}>Nations</a><a href="#e" class:on={isPriv}>Privileges</a><a href="#r" class:on={isResearch}>Research</a></nav>
+  <nav><a href="#/" class:on={!isPops && !isNations && !isPriv && !isResearch && !isMap}>Production Chains</a><a href="#pops" class:on={isPops}>Pops</a><a href="#n" class:on={isNations}>Nations</a><a href="#m" class:on={isMap}>Map</a><a href="#e" class:on={isPriv}>Privileges</a><a href="#r" class:on={isResearch}>Research</a></nav>
   <input id="search" bind:this={search} onchange={go} onfocus={() => loadNations().then(d => N = d)} placeholder="Search goods, buildings, pops or nations…  (/)" list="names" autocomplete="off">
   <datalist id="names">{#each searchNames as n}<option value={n}></option>{/each}{#each nationNames as n}<option value={n}></option>{/each}</datalist>
   <div class="agesel" title="The age you are playing in: production shows what's available, pop demand includes that age's modifiers">
@@ -51,6 +53,8 @@
   <Nations tag={hash.startsWith('#n/') ? hash.slice(3) : null} />
 {:else if isPriv}
   <Privileges id={hash.startsWith('#e/') ? decodeURIComponent(hash.slice(3)) : null} />
+{:else if isMap}
+  <WorldMap />
 {:else if isResearch}
   <Research id={hash.startsWith('#r/') ? decodeURIComponent(hash.slice(3)) : null} />
 {:else}

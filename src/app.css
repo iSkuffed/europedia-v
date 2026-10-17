@@ -399,3 +399,37 @@ a:hover > .art, a:hover > .art.sm { border-color: var(--frame-hi); box-shadow: 0
 .minicards { display: flex; flex-wrap: wrap; gap: 8px 6px; }
 .minicard { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 84px; text-align: center; font-size: 12px; line-height: 1.25; color: var(--text); }
 .minicard:hover { color: var(--gold); }
+
+/* world map tab */
+.worldmap main { padding: 10px 12px; overflow: hidden; }
+.worldmap .nmap { margin: 0; }
+.modes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.modes button { display: flex; align-items: center; gap: 6px; padding: 3px 6px; font: inherit; font-size: 13px; color: var(--text); background: #0d1117aa; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; text-align: left; }
+.modes button img { width: 26px; height: 26px; }
+.modes button:hover { border-color: var(--frame); }
+.modes button.on { border-color: var(--frame-hi); color: var(--gold); box-shadow: 0 0 8px #d8b46a44; background: #2a2416; }
+.toggles { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 8px 0 0; }
+.toggles .tgl { margin: 0 12px 0 0; display: flex; align-items: center; gap: 4px; }
+.toggles .tgl img { width: 20px; height: 20px; }
+.wlegend { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.wlegend li { display: flex; align-items: center; gap: 7px; padding: 2px 4px; }
+.wlegend li i { flex: none; width: 12px; height: 12px; border-radius: 2px; box-shadow: inset 0 0 0 1px #0006; }
+.wlegend li > a, .wlegend li > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wlegend li b { color: var(--dim); font-weight: 500; font-variant-numeric: tabular-nums; }
+.gpick { display: flex; flex-wrap: wrap; gap: 3px; }
+.gpick button { display: flex; flex-direction: column; align-items: center; padding: 2px 3px; min-width: 38px; font: inherit; font-size: 11px; color: var(--dim); background: #0d1117aa; border: 1px solid var(--line); border-radius: 3px; cursor: pointer; }
+.gpick button img { width: 24px; height: 24px; }
+.gpick button.on { border-color: var(--frame-hi); color: var(--gold); background: #2a2416; }
+.wtip, .wpick { font-size: 13px; }
+.wtip { position: absolute; z-index: 4; pointer-events: none; width: 240px; padding: 6px 10px; background: #0d1117f0; border: 1px solid var(--frame); box-shadow: 0 2px 8px #000a; }
+.wtip > b, .wpick > b { display: block; color: var(--gold); font-size: 15px; font-weight: 600; }
+.wtip .sub, .wpick .sub { color: var(--dim); font-style: italic; }
+.wtip dl, .wpick dl { display: grid; grid-template-columns: auto 1fr; gap: 1px 10px; margin: 4px 0 0; }
+.wtip dt, .wpick dt { color: var(--dim); }
+.wtip dd, .wpick dd { margin: 0; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.wtip .ic, .wpick .ic { width: 18px; height: 18px; }
+.wtip .fl, .wpick .fl { width: 18px; height: 12px; overflow: hidden; display: inline-flex; }
+.wtip .fl img, .wpick .fl img { width: 100%; height: 100%; }
+.wpick { padding: 6px 8px; border: 1px solid var(--line); background: #0d1117aa; }
+.wpick .chip { margin-top: 6px; }
+.wmark { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #fff3c4; border-radius: 50%; box-shadow: 0 0 0 1px #000, 0 0 6px #000; pointer-events: none; }

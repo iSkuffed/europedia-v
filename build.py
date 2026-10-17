@@ -535,21 +535,67 @@ mcode = {}
 for f in glob.glob(f'{MAP}/named_locations/*.txt'):
     for k, _, v in parse(open(f, encoding='utf-8-sig').read()):
         mcode[bytes.fromhex(v.zfill(6))] = 0 if k in water else idx[k] + 2 if k in idx else 1
-MAP_SCALE = 8
-raw = subprocess.run(['magick', f'{MAP}/locations.png', '-sample', f'{100 / MAP_SCALE}%', 'rgb:-'], capture_output=True, check=True).stdout
-px = bytearray(len(raw))
-for i in range(0, len(raw), 3):
-    c = mcode.get(raw[i:i + 3], 1)
-    px[i], px[i + 1] = c >> 8, c & 255
-mw, mh = 16384 // MAP_SCALE, 8192 // MAP_SCALE
-subprocess.run(['magick', '-size', f'{mw}x{mh}', '-depth', '8', 'rgb:-', '-strip', '-define', 'png:color-type=2', '-define', 'png:compression-level=9',
-                f'{OUT}/public/map.png'], input=bytes(px), check=True)
-mx, mz = L[countries['MOS']['cap']][2:4]
-near = [3 * (((8192 - mz) // MAP_SCALE + dy) * mw + mx // MAP_SCALE + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
-assert countries['MOS']['cap'] + 2 in [px[o] * 256 + px[o + 1] for o in near], 'map.png: Moscow is not at its locator'
+for MAP_SCALE, mfile in ((8, 'map.png'), (4, 'world.png')):  # world.png: same encoding at 1/4 scale for the Map tab
+    raw = subprocess.run(['magick', f'{MAP}/locations.png', '-sample', f'{100 / MAP_SCALE}%', 'rgb:-'], capture_output=True, check=True).stdout
+    px = bytearray(len(raw))
+    for i in range(0, len(raw), 3):
+        c = mcode.get(raw[i:i + 3], 1)
+        px[i], px[i + 1] = c >> 8, c & 255
+    mw, mh = 16384 // MAP_SCALE, 8192 // MAP_SCALE
+    subprocess.run(['magick', '-size', f'{mw}x{mh}', '-depth', '8', 'rgb:-', '-strip', '-define', 'png:color-type=2', '-define', 'png:compression-level=9',
+                    f'{OUT}/public/{mfile}'], input=bytes(px), check=True)
+    mx, mz = L[countries['MOS']['cap']][2:4]
+    near = [3 * (((8192 - mz) // MAP_SCALE + dy) * mw + mx // MAP_SCALE + dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)]
+    assert countries['MOS']['cap'] + 2 in [px[o] * 256 + px[o + 1] for o in near], f'{mfile}: Moscow is not at its locator'
+    assert os.path.getsize(f'{OUT}/public/{mfile}') < 1.9e6
 assert countries['MOS']['name'] == 'Muscovy' and L[countries['MOS']['cap']][0] == 'Moscow' and L[countries['MOS']['cap']][5] == 2 and countries['FRA']['color'] and countries['PSK']['over'][0] == 'NOV'
+def col(v):  # named colour, or an rgb/hsv literal parsed as a block of numbers
+    if isinstance(v, str):
+        return colors.get(v)
+    if isinstance(v, list) and len(v) == 3:
+        return rgb('rgb', *[x for _, _, x in v])
 with open(f'{OUT}/public/nations.json', 'w') as f:
-    json.dump({'locs': L, 'areas': [name(a, a) for a in areas], 'countries': countries}, f, separators=(',', ':'), ensure_ascii=False)
+    rel_defs = load('religions')
+    rel_colors = {name(k, k): '#%02x%02x%02x' % tuple(col(get(v, 'color'))) for k, v in rel_defs.items() if col(get(v, 'color'))}  # religion display name -> colour
+    json.dump({'locs': L, 'areas': [name(a, a) for a in areas], 'countries': countries, 'relColors': rel_colors}, f, separators=(',', ':'), ensure_ascii=False)
+
+# ---- map modes for the Map tab: per-location class indices + colour sets -> public/mapinfo.json
+def color_of(d, key):
+    c = col(get(d[key], 'color')) if key in d else None
+    if c is None:
+        print(f'warning: no colour for {key}')
+    return c or [128, 128, 128]
+def kind_set(d, used):  # entries as [display name, colour] in definition order, + key -> index
+    keys = [k for k in d if k in used]
+    return [[name(k, k), color_of(d, k)] for k in keys], {k: i for i, k in enumerate(keys)}
+key_of = {i: k for k, i in idx.items()}
+major = lambda d: max(d, key=d.get) if d else None
+loc_cul, loc_rel = [], []
+for i in range(len(L)):
+    p = loc_pops.get(key_of[i], [])
+    cs, rs = {}, {}
+    for _, c, r, n in p:
+        cs[c] = cs.get(c, 0) + n; rs[r] = rs.get(r, 0) + n
+    t = tmpl.get(key_of[i], [])
+    loc_cul.append(major(cs) or get(t, 'culture')); loc_rel.append(major(rs) or get(t, 'religion'))
+sets, cls = {}, {}
+for kind, d, field in (('topo', load('topography'), 'topography'), ('veg', load('vegetation'), 'vegetation'), ('climate', load('climates'), 'climate')):
+    vals = [get(tmpl.get(key_of[i], []), field) for i in range(len(L))]
+    sets[kind], ix = kind_set(d, set(d))
+    cls[kind] = [ix.get(v, -1) for v in vals]
+for kind, d, vals in (('culture', load('cultures'), loc_cul), ('religion', load('religions'), loc_rel)):
+    sets[kind], ix = kind_set(d, set(vals))
+    cls[kind] = [ix.get(v, -1) for v in vals]
+cls['pop'] = [round(sum(p[3] for p in loc_pops.get(key_of[i], [])), 3) for i in range(len(L))]
+cls['harbor'] = [round(float(get(tmpl.get(key_of[i], []), 'natural_harbor_suitability') or 0), 2) for i in range(len(L))]
+with open(f'{OUT}/public/mapinfo.json', 'w') as f:
+    json.dump({'sets': sets, 'locs': cls}, f, separators=(',', ':'), ensure_ascii=False)
+assert all(len(v) == len(L) for v in cls.values())
+mos = countries['MOS']['cap']
+print('mapinfo:', {k: len(v) for k, v in sets.items()}, 'missing:', {k: v.count(-1) for k, v in cls.items() if k not in ('pop', 'harbor')}, os.path.getsize(f'{OUT}/public/mapinfo.json'), 'bytes')
+print('Moscow:', sets['culture'][cls['culture'][mos]][0], '/', sets['religion'][cls['religion'][mos]][0])
+assert sets['culture'][cls['culture'][mos]][0] == 'Muscovite' and sets['religion'][cls['religion'][mos]][0] == 'Orthodoxy'
+assert any(n == 'Mountains' for n, _ in sets['topo']), sets['topo']
 
 data = {'popInfo': pop_info, 'demandMods': demand_mods, 'tempDemand': temp_demand, 'ages': ages, 'units': units, 'demandRefs': demand_refs, 'goods': goods, 'buildings': buildings, 'demands': demands, 'pops': pops, 'cats': cats,
         'icons': {d: sorted(os.path.splitext(f)[0] for f in os.listdir(os.path.join(OUT, 'public', 'icons', d)))

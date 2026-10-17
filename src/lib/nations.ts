@@ -11,7 +11,7 @@ export interface Nation {
 }
 // location: name, raw good, map x, map z (north is bigger), owner tag, rank (0 rural / 1 town / 2 city), area index
 export type Loc = [string, string, number, number, string, number, number];
-export interface NationData { locs: Loc[]; areas: string[]; countries: Record<string, Nation> }
+export interface NationData { locs: Loc[]; areas: string[]; countries: Record<string, Nation>; relColors?: Record<string, string> }
 
 let cache: Promise<NationData> | undefined;
 export const loadNations = () => cache ??= fetch('nations.json').then(r => r.json());

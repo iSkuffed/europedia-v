@@ -25,7 +25,8 @@
     const list = idx.map(i => ADV[SA!.ids[i]]).filter(Boolean).sort((a, b) => a.age - b.age || a.name.localeCompare(b.name));
     return {all: list, uniq: list.filter(a => a.uniq?.length), common: list.filter(a => !a.uniq?.length)};
   });
-  const CLASS_ORDER = ['peasants', 'tribesmen', 'clergy', 'nobles', 'burghers', 'slaves'];  // fixed colour per class
+  // in-game pop type colours: in_game/common/pop_types/00_default.txt -> main_menu/common/named_colors/02_map.txt (pop_*)
+  const CLASS_COLORS: Record<string, string> = {nobles: '#5474cc', clergy: '#c8d3e6', burghers: '#c98f1a', peasants: '#687843', tribesmen: '#785543', slaves: '#5c5c5c', soldiers: '#e03a3a', laborers: '#242a33'};
   const sn = (id: string) => S?.names[id] ?? id;
   // starting privileges by estate, in the game's estate order
   const ESTATES = ['crown_estate', 'nobles_estate', 'clergy_estate', 'burghers_estate', 'peasants_estate'];
@@ -145,9 +146,9 @@
 
           <section class="card"><h4 class="pop">Population<small>{kPeople(popTotal(tag))} people in your own locations</small></h4>
             <div class="donuts">
-              <Donut title="Classes" parts={c.pops} order={CLASS_ORDER} label={pName} iconOf={pIcon} />
+              <Donut title="Classes" parts={c.pops} colors={CLASS_COLORS} label={pName} iconOf={pIcon} />
               <Donut title="Cultures" parts={c.cul} />
-              <Donut title="Religions" parts={c.rel} />
+              <Donut title="Religions" parts={c.rel} colors={N?.relColors} />
             </div>
             <p class="meta">Pops as placed in 1337, subjects not counted. Hover a slice for the number of people.</p>
           </section>
