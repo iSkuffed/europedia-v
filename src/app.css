@@ -46,9 +46,11 @@ img.ic, .ic-fb { width: 28px; height: 28px; object-fit: contain; flex: none; fil
 .chip .n { color: var(--gold); font-variant-numeric: tabular-nums; }
 .title { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; padding: 10px 14px; border: 1px solid var(--frame);
   background: linear-gradient(90deg, #2a2236, #18202a 60%); box-shadow: inset 0 0 0 1px #000, 0 2px 6px #0008; }
-.popbar { flex: none; margin-left: auto; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+/* title plate: name and description take the free space; stats sit at the right in a fixed order */
+.title > :nth-child(2) { flex: 1; min-width: 0; }
+.popbar { flex: none; margin-left: 14px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .popbar .flbl { font-size: 11px; letter-spacing: 1px; color: var(--dim); text-transform: uppercase; }
-.popbar .row { display: flex; gap: 8px; }
+.popbar .row { display: flex; gap: 8px; min-height: 63px; align-items: center; }  /* same height for every stat, so their labels line up */
 .popbar .pd { display: flex; flex-direction: column; align-items: center; padding: 3px 6px; border: 1px solid var(--line); border-radius: 3px; background: #0d1117aa; text-decoration: none; }
 .popbar .pd img.ic, .popbar .pd .ini { width: 36px; height: 36px; }
 .popbar .tag { white-space: nowrap; }
@@ -62,15 +64,14 @@ img.ic, .ic-fb { width: 28px; height: 28px; object-fit: contain; flex: none; fil
 .popbar .pd.food .big { color: var(--out); font-size: 24px; }
 .popbar .pd.food b { color: var(--out); }
 .popbar .pd.mul b { color: var(--in); }
-.filters { margin-left: auto; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-.fgroup { display: flex; align-items: center; gap: 5px; }
+.filters .row { flex-wrap: wrap; justify-content: center; max-width: 440px; gap: 4px; }
 .flbl { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; margin-right: 4px; }
 .filters button { font-family: var(--serif); cursor: pointer; color: var(--gold); border: 1px solid var(--frame);
   background: radial-gradient(circle at 40% 35%, #34503a, #16241b); box-shadow: inset 0 0 0 1px #000, 0 1px 3px #000a; }
 .filters button.age { width: 34px; height: 34px; border-radius: 50%; font-size: 14px; font-weight: 700; text-shadow: 0 1px 1px #000; }
-.filters button.rec { height: 34px; padding: 0 6px; border-radius: 3px; display: flex; align-items: center; gap: 2px;
-  background: linear-gradient(#2a3542, #1d2631); }
-.filters button.rec img.ic { width: 24px; height: 24px; }
+.filters .rec { height: 34px; padding: 0 6px; border-radius: 3px; display: flex; align-items: center; gap: 2px; border: 1px solid var(--frame);
+  background: linear-gradient(#2a3542, #1d2631); box-shadow: inset 0 0 0 1px #000, 0 1px 3px #000a; }
+.filters .rec img.ic { width: 24px; height: 24px; }
 .filters button:hover:not(:disabled) { border-color: var(--frame-hi); }
 .filters button.on { border: 2px solid var(--frame-hi); box-shadow: 0 0 8px #f0d58c99; background: radial-gradient(circle at 40% 35%, #7a6328, #3b2c10); color: #fff6d8; }
 .filters button.rec.on { background: linear-gradient(#5a4a22, #2e2410); }
@@ -337,6 +338,7 @@ img.hic { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; 
 .radii button i { color: var(--dim); font-size: 11px; }
 .radii button.on { border-color: var(--frame-hi); color: var(--gold); box-shadow: 0 0 6px #d8b46a55; }
 .dm.nr { grid-template-columns: 3em 1fr; }
+.dm.wh { grid-template-columns: 5.6em 1fr; }  /* Where: word labels (Continent) need more room than numbers */
 .ncols { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 0 16px; align-items: start; }
 .ncols > div > .card { margin-bottom: 16px; }
 .donuts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 18px; margin: 4px 0 8px; }

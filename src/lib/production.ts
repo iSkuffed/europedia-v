@@ -245,11 +245,12 @@ const keep = (list: Card[]) => { EMPTY.push(...list.filter(c => !c[0]).map(c => 
 const cards = (list: Card[]) => `<div class="masonry">${keep(list).map(([body, h, , cls]) => `<section class="card${cls ? ' ' + cls : ''}">${h}${body}</section>`).join('')}</div>`;
 export const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
 function filterBar(g: string) {
-  if (!producers[g]) return '';
   const vs = variants(g);
-  const recs = vs.length > 1 && vs.length <= 8 ? `<div class="fgroup"><span class="flbl">Recipe</span>${vs.map((v, k) =>
-    `<button class="rec${F.rec === k ? ' on' : ''}" data-f="rec" data-v="${k}" title="${esc(v.map(i => G[i].name).join(' + '))}">${v.map(i => icon('goods', i, G[i].name)).join('')}</button>`).join('')}</div>` : '';
-  return recs && `<div class="filters">${recs}</div>`;
+  if (!vs.length) return '';
+  const tip = (v: string[]) => esc(v.map(i => G[i].name).join(' + ')), ics = (v: string[]) => v.map(i => icon('goods', i, G[i].name)).join('');
+  // a single recipe has nothing to filter, so it shows without a button
+  return `<div class="popbar filters"><span class="flbl">Recipe</span><div class="row">${vs.length === 1 ? `<span class="rec" title="${tip(vs[0])}">${ics(vs[0])}</span>`
+    : vs.map((v, k) => `<button class="rec${F.rec === k ? ' on' : ''}" data-f="rec" data-v="${k}" title="${tip(v)}">${ics(v)}</button>`).join('')}</div></div>`;
 }
 let keepScroll = false;
 const filterQuery = () => F.rec != null ? `?rec=${F.rec}` : '';
@@ -287,7 +288,7 @@ function foodBar(g: string) {
 function conBar(g: string) {
   if (!conUse[g]) return '';
   return `<div class="popbar"><span class="flbl">Construction</span><div class="row"><span class="pd${CORE.includes(g) ? ' top' : ''}"
-    title="Needed to construct ${conUse[g]} of ${BUILT} building types"><span class="big">${pct(g)}%</span><b>${conUse[g]} buildings</b></span></div></div>`;
+    title="Needed to construct ${conUse[g]} of ${BUILT} building types"><span class="big">${pct(g)}%</span><b>${conUse[g]} building${conUse[g] === 1 ? '' : 's'}</b></span></div></div>`;
 }
 function conNote(g: string) {
   const f = feedsCore(g);
@@ -344,7 +345,7 @@ function demandShifts(g: string) {
     const v = c[k as keyof typeof c]!;
     const txt = Array.isArray(v) ? v.map(esc).join(', ') : typeof v === 'number' ? `×${fmt(v)}`
       : Object.entries(v).map(([w, n]) => `${esc(w)} <span class="${cls(n, 1)}">×${fmt(n)}</span>`).join(' · ');
-    return `<div class="dm"><span class="v">${esc(label)}</span><span>${txt}</span></div>`;
+    return `<div class="dm wh"><span class="v">${esc(label)}</span><span>${txt}</span></div>`;
   }).join('')}</div>`);
   if (events.length) out.push(`<div class="dsec">${term('Events')}${chipList(events.map(e =>
     `<div class="dm ev"><span class="v up">${signed(e.amt)}</span><span>${trig(e)}${e.months ? ` <i>for ${e.months} months</i>` : ''}</span></div>`), 10)}</div>`);
