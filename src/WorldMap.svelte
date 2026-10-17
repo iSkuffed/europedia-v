@@ -165,10 +165,13 @@
   });
 
   // ---- side panel ------------------------------------------------------------------------------------------
-  // what's on screen, for the legend: locations whose centre is in view
+  // what's on screen, for the legend: locations whose centre is in view, counted once the map has been
+  // still for a moment (recounting 21k locations every frame of a pan made it stutter)
+  let settled = $state<View | null>(null);
+  $effect(() => { const v = view, t = setTimeout(() => settled = v, 250); return () => clearTimeout(t); });
   const inView = $derived.by(() => {
-    if (!N || !M || !W) return [] as number[];
-    const {x0, y0, s} = view, x1 = x0 + W / s, y1 = y0 + H / s, mw = M.w;
+    if (!N || !M || !W || !settled) return [] as number[];
+    const {x0, y0, s} = settled, x1 = x0 + W / s, y1 = y0 + H / s, mw = M.w;
     return N.locs.map((l, i) => i).filter(i => { const y = ly(i); if (y < y0 || y > y1) return false; const x = lx(i); return [x - mw, x, x + mw].some(xx => xx >= x0 && xx <= x1); });
   });
   const tally = (key: (i: number) => string | number, weight: (i: number) => number) => {
