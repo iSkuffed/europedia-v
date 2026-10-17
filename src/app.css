@@ -4,6 +4,7 @@
   --bg: #0d1117; --panel: #18202a; --panel2: #222c38; --band: #2a3546;
   --line: #3a3426; --frame: #8a6d3b; --frame-hi: #d8b46a;
   --text: #ebe1c8; --dim: #a39a84; --gold: #f0d58c;
+  --stripe: #ebe1c80e;  /* zebra rows: a faint wash of --text */
   --in: #e48a5c; --out: #8fd16f; --pop: #82bde6;
   --serif: "Noto Serif", Georgia, "Liberation Serif", serif;
 }
@@ -32,6 +33,7 @@ aside h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; co
 .grid a .pct { position: absolute; right: 1px; bottom: 0; font-size: 10px; color: var(--gold); text-shadow: 0 0 2px #000, 0 0 2px #000; }
 .grid a:hover, .grid a.on { border-color: var(--frame-hi); box-shadow: 0 0 6px #d8b46a66; }
 .blist a { display: flex; align-items: center; gap: 6px; padding: 2px 4px; border-radius: 3px; }
+.blist a:nth-of-type(even) { background: var(--stripe); }
 .blist a:hover, .blist a.on { background: var(--panel2); color: var(--gold); }
 img.ic, .ic-fb { width: 28px; height: 28px; object-fit: contain; flex: none; filter: drop-shadow(0 1px 1px #000c); }
 .sm img.ic, .sm .ic-fb { width: 20px; height: 20px; }
@@ -225,6 +227,7 @@ main .enter > .card { margin-bottom: 16px; }
 .blist .up-tag { margin-left: auto; }
 table.ptab { border-collapse: collapse; width: 100%; }
 .ptab th { font-weight: 600; font-size: 12px; color: var(--gold); text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--frame); }
+.ptab tbody tr:nth-child(even), table.pops tr:nth-child(even), .bar-row:nth-child(even of .bar-row) { background: var(--stripe); }
 .ptab td { padding: 2px 6px; border-top: 1px solid var(--line); }
 .ptab td.n { text-align: right; font-variant-numeric: tabular-nums; }
 .ptab img.ic { width: 22px; height: 22px; vertical-align: middle; }
