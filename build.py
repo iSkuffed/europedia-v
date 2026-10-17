@@ -487,7 +487,8 @@ for f in glob.glob(f'{GAME}/in_game/setup/countries/*.txt'):
         c = isinstance(v, list) and get(v, 'color')
         if isinstance(c, str) and c in colors:
             ccol[k] = colors[c]
-    for m in re.findall(r'^(\w+)\s*=\s*\{\s*color\s*=\s*(rgb|hsv360|hsv)\s*\{\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)', open(f, encoding='utf-8-sig').read(), re.M):
+    nocomments = re.sub(r'#[^\n]*', '', open(f, encoding='utf-8-sig').read())  # "MLO = { #Milan" hid the colour
+    for m in re.findall(r'^(\w+)\s*=\s*\{\s*color\s*=\s*(rgb|hsv360|hsv)\s*\{\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)', nocomments, re.M):
         ccol[m[0]] = rgb(*m[1:])  # inline colour
 over = {}
 for a, b, t in re.findall(r'dependency\s*=\s*\{\s*first\s*=\s*(\w+)\s+second\s*=\s*(\w+)\s+subject_type\s*=\s*(\w+)', open(f'{SETUP}/12_diplomacy.txt', encoding='utf-8-sig').read()):
