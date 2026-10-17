@@ -42,6 +42,9 @@ img.ic, .ic-fb { width: 28px; height: 28px; object-fit: contain; flex: none; fil
 .ic-fb.b { border-radius: 4px; }
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px 2px 3px; border-radius: 3px; margin: 2px; white-space: nowrap;
   background: linear-gradient(#2a3542, #1d2631); border: 1px solid #4a3f2a; }
+/* long names end in … instead of spilling out of narrow columns; the full name is in the tooltip */
+.chip { max-width: calc(100% - 4px); }
+.chip > .nm { overflow: hidden; text-overflow: ellipsis; }
 .chip:hover { border-color: var(--frame-hi); color: var(--gold); }
 .chip .n { color: var(--gold); font-variant-numeric: tabular-nums; }
 .title { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; padding: 10px 14px; border: 1px solid var(--frame);

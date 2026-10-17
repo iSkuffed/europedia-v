@@ -24,7 +24,7 @@ export function popDemand(g: string, p: string) {
 export const gChip = (g: string, n?: number) => `<a class="chip" href="#g/${g}">${icon('goods', g, G[g]?.name || g)}${esc(G[g]?.name || g)}${n != null ? ` <span class="n">${fmt(n)}</span>` : ''}</a>`;
 // compact: icon + amount, name in tooltip (for dense recipe lines)
 const gIco = (g: string, n?: number) => `<a class="chip ico" href="#g/${g}" title="${esc(G[g]?.name || g)}">${icon('goods', g, G[g]?.name || g)}${n != null ? `<span class="n">${fmt(n)}</span>` : ''}</a>`;
-export const bChip = (b: string) => `<a class="chip" href="#b/${b}">${icon('buildings', b, B[b].name)}${esc(B[b].name)}</a>`;
+export const bChip = (b: string) => `<a class="chip" href="#b/${b}" title="${esc(B[b].name)}">${icon('buildings', b, B[b].name)}<span class="nm">${esc(B[b].name)}</span></a>`;
 const uChip = (u: string) => `<span class="chip" title="${esc(U[u].age ? U[u].age.replace(/^age_\d_/, '').replace(/_/g, ' ') + ' age' : '')}">${icon('units', U[u].cat, U[u].name)}${esc(U[u].name)}</span>`;
 // demand groups that aren't a single pop type get the game's generic icons
 const PGROUP: Record<string, [string, string]> = {all: ['all_pops', 'All pops'], upper: ['strata', 'Upper strata']};
