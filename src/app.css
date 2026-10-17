@@ -361,7 +361,12 @@ img.hic { width: 20px; height: 20px; vertical-align: middle; margin-right: 6px; 
 .uq .um { display: flex; flex-wrap: wrap; gap: 0 14px; font-size: 13px; color: var(--dim); margin-top: 1px; }
 .uq .um b { color: var(--out); font-weight: normal; }
 .nmap { position: relative; margin: 0 0 6px; border: 1px solid var(--frame); box-shadow: inset 0 0 12px #000, 0 1px 3px #000; overflow: hidden; background: #142231; }
-.nmap canvas { display: block; cursor: crosshair; }
+.nmap canvas { display: block; cursor: grab; touch-action: none; }
+.nmap canvas.grabbing { cursor: grabbing; }
+.nmap .mzoom { position: absolute; top: 6px; right: 6px; z-index: 3; display: flex; flex-direction: column; gap: 3px; }
+.nmap .mzoom button { width: 26px; height: 26px; cursor: pointer; font-size: 16px; line-height: 1; color: var(--text); background: #0d1117dd; border: 1px solid var(--frame); border-radius: 3px; }
+.nmap .mzoom button:hover:not(:disabled) { color: var(--gold); border-color: var(--frame-hi); }
+.nmap .mzoom button:disabled { opacity: .35; cursor: default; }
 .nmap svg { position: absolute; inset: 0; pointer-events: none; }
 .nmap circle { fill: none; stroke: #f0d58c; stroke-opacity: .55; stroke-width: 1.5; stroke-dasharray: 5 4; }
 .nmap .mi { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; pointer-events: none; filter: drop-shadow(0 0 1px #000) drop-shadow(0 1px 1px #000); }
