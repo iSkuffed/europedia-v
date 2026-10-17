@@ -35,7 +35,7 @@
 <svelte:window onkeydown={focusSearch} onhashchange={() => hash = location.hash} />
 
 <header>
-  <h1>Europedia V<span class="beta" title="Work in progress: some data may be missing or wrong, and layouts may break.">Beta</span></h1>
+  <h1><a href="#/" title="Home">Europedia V</a><span class="beta" title="Work in progress: some data may be missing or wrong, and layouts may break.">Beta</span></h1>
   <nav><a href="#/" class:on={!isPops && !isNations && !isPriv && !isResearch && !isMap}>Production Chains</a><a href="#pops" class:on={isPops}>Pops</a><a href="#n" class:on={isNations}>Nations</a><a href="#m" class:on={isMap}>Map</a><a href="#e" class:on={isPriv}>Privileges</a><a href="#r" class:on={isResearch}>Research</a></nav>
   <input id="search" bind:this={search} onchange={go} onfocus={() => loadNations().then(d => N = d)} placeholder="Search goods, buildings, pops or nations…  (/)" list="names" autocomplete="off">
   <datalist id="names">{#each searchNames as n}<option value={n}></option>{/each}{#each nationNames as n}<option value={n}></option>{/each}</datalist>
