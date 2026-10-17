@@ -14,10 +14,33 @@ export const loadWorld = () => worldCache ??= fetch('world.png').then(r => r.blo
     return {w, h, c};
   });
 
+// how far each water pixel is from land, in half raster pixels (254 at most; 0 on land), for the shallows' glow
+export function seaDistance(m: Raster) {
+  const {w, h, c} = m, d = new Uint8Array(w * h);
+  for (let i = 0; i < d.length; i++) d[i] = c[i] ? 0 : 254;
+  const min = (i: number, j: number, k: number) => { if (d[j] + k < d[i]) d[i] = d[j] + k; };
+  // two-pass chamfer: 2 straight, 3 diagonal
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (!d[i]) continue;
+    if (x) min(i, i - 1, 2);
+    if (y) { min(i, i - w, 2); if (x) min(i, i - w - 1, 3); if (x < w - 1) min(i, i - w + 1, 3); }
+  }
+  for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
+    const i = y * w + x;
+    if (!d[i]) continue;
+    if (x < w - 1) min(i, i + 1, 2);
+    if (y < h - 1) { min(i, i + w, 2); if (x < w - 1) min(i, i + w + 1, 3); if (x) min(i, i + w - 1, 3); }
+  }
+  return d;
+}
+
 type Set_ = [string, [number, number, number]][];
 export interface MapInfo {
   sets: Record<'topo' | 'veg' | 'climate' | 'culture' | 'religion', Set_>;
-  locs: Record<'topo' | 'veg' | 'climate' | 'culture' | 'religion', number[]> & {pop: number[]; harbor: number[]};
+  locs: Record<'topo' | 'veg' | 'climate' | 'culture' | 'religion', number[]> & {pop: number[]; harbor: number[]; dev?: number[]};
+  goods: Record<string, [number, number, number]>;  // the game's map colour per raw good
+  ranks: Set_;                                      // rural settlement, town, city
 }
 let infoCache: Promise<MapInfo> | undefined;
 export const loadMapInfo = () => infoCache ??= fetch('mapinfo.json').then(r => r.json());

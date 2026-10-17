@@ -6,11 +6,12 @@
 <script lang="ts">
   // The location map: a colour per map code drawn over the location raster at screen resolution (borders stay one
   // pixel thin at any zoom), with drag to pan, wheel / buttons to zoom and hover / click on a location.
-  // `paint` draws on the canvas afterwards (rivers, names); `children` lays HTML over it.
+  // `paint` draws on the canvas afterwards (rivers, names); `children` lays HTML over it. `sea` shades open water
+  // per raster pixel (an index into its 3-byte palette; 255 is beyond the map's top and bottom).
   import type { Snippet } from 'svelte';
 
-  let { M, P, oid, fit, H, W = $bindable(0), pan = $bindable(null), paint, onhover, onpick, resetTitle = 'Back', children }: {
-    M: Raster; P: Uint8ClampedArray; oid: Int32Array; fit: {s: number; cx: number; cy: number}; H: number; W?: number;
+  let { M, P, oid, sea, fit, H, W = $bindable(0), pan = $bindable(null), paint, onhover, onpick, resetTitle = 'Back', children }: {
+    M: Raster; P: Uint8ClampedArray; oid: Int32Array; sea?: {d: Uint8Array; pal: Uint8ClampedArray}; fit: {s: number; cx: number; cy: number}; H: number; W?: number;
     pan?: {cx: number; cy: number; s: number} | null; paint?: (ctx: CanvasRenderingContext2D, v: View, dpr: number) => void;
     onhover?: (h: {i: number; x: number; y: number} | null) => void; onpick?: (i: number) => void; resetTitle?: string; children?: Snippet<[View]>;
   } = $props();
@@ -40,18 +41,19 @@
   // redraw at most once a frame
   $effect(() => {
     if (!canvas || !W) return;
-    const m = M, cv = canvas, pal = P, ids = oid, {x0, y0, s} = view, w = W, h = H, after = paint;
+    const m = M, cv = canvas, pal = P, ids = oid, sh = sea, {x0, y0, s} = view, w = W, h = H, after = paint;
     const raf = requestAnimationFrame(() => {
       const dpr = devicePixelRatio || 1, cw = Math.round(w * dpr), ch = Math.round(h * dpr), k = s * dpr;
       if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
       const cols = new Int32Array(cw);
       for (let x = 0; x < cw; x++) cols[x] = ((Math.floor(x0 + x / k) % m.w) + m.w) % m.w;
-      const codes = new Uint16Array(cw * ch);
+      const codes = new Uint16Array(cw * ch), sd = sh && new Uint8Array(cw * ch);
       for (let y = 0; y < ch; y++) {
-        const my = Math.floor(y0 + y / k);
-        if (my < 0 || my >= m.h) continue;  // off the map: water (0)
-        const row = my * m.w, o = y * cw;
+        const my = Math.floor(y0 + y / k), o = y * cw;
+        if (my < 0 || my >= m.h) { sd?.fill(255, o, o + cw); continue; }  // off the map: water (0)
+        const row = my * m.w;
         for (let x = 0; x < cw; x++) codes[o + x] = m.c[row + cols[x]];
+        if (sd) for (let x = 0; x < cw; x++) sd[o + x] = sh!.d[row + cols[x]];
       }
       // offsets 0 / 3 / 6 in the palette: plain, country border (coast for water), location border
       const img = new ImageData(cw, ch), d = img.data, last = cw * (ch - 1);
@@ -62,6 +64,7 @@
           if ((r !== code && ids[r] !== ids[code]) || (b !== code && ids[b] !== ids[code])) o += 3;
           else if (r !== code || b !== code) o += 6;
         } else if (code === 0 && (r > 0 || b > 0)) o += 3;
+        else if (sd && code === 0) { const q = sd[p] * 3, sp = sh!.pal; d[4 * p] = sp[q]; d[4 * p + 1] = sp[q + 1]; d[4 * p + 2] = sp[q + 2]; d[4 * p + 3] = 255; continue; }
         d[4 * p] = pal[o]; d[4 * p + 1] = pal[o + 1]; d[4 * p + 2] = pal[o + 2]; d[4 * p + 3] = 255;
       }
       const ctx = cv.getContext('2d')!;

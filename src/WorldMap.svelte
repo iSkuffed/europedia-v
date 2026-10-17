@@ -1,9 +1,10 @@
 <script lang="ts">
   // The world map at the 1337 start, with the game's map modes: political, culture, religion, raw goods,
-  // population, settlements, topography, vegetation, climate; rivers and country names drawn over them.
+  // population, development, settlements, topography, vegetation, climate; rivers and country names drawn over them.
+  // Colours are the game's: its named colours and map-mode defines, the water and gradients matched to screenshots.
   import { DATA } from './lib/data';
   import { loadNations, type NationData } from './lib/nations';
-  import { loadWorld, loadMapInfo, loadRivers, WORLD_SCALE, type MapInfo } from './lib/world';
+  import { loadWorld, loadMapInfo, loadRivers, seaDistance, WORLD_SCALE, type MapInfo } from './lib/world';
   import MapCanvas, { type Raster, type View } from './MapCanvas.svelte';
 
   const G = DATA.goods;
@@ -13,7 +14,7 @@
   loadMapInfo().then(d => I = d);
 
   const MODES = [['political', 'Political', 'political'], ['culture', 'Culture', 'culture'], ['religion', 'Religion', 'location_religion'],
-    ['goods', 'Raw goods', 'raw_material'], ['pop', 'Population', 'population'], ['rank', 'Settlements', 'country_rank'],
+    ['goods', 'Raw goods', 'raw_material'], ['pop', 'Population', 'population'], ['dev', 'Development', 'development'], ['rank', 'Settlements', 'country_rank'],
     ['topo', 'Topography', 'topography'], ['veg', 'Vegetation', 'vegetation'], ['climate', 'Climate', 'climate']] as const;
   type Mode = typeof MODES[number][0];
   const saved = JSON.parse(localStorage.getItem('worldmap') ?? '{}');
@@ -36,12 +37,30 @@
   // ---- colours ---------------------------------------------------------------------------------------------
   const hex = (s: string) => [1, 3, 5].map(i => parseInt(s.slice(i, i + 2), 16));
   const mix = (a: number[], b: number[], t: number) => a.map((v, k) => Math.round(v + (b[k] - v) * t));
-  const SEA = hex('#1b2f45'), WASTE = hex('#3a3833'), FREE = hex('#57554d'), GOLD = hex('#f0c75a'), DIM = hex('#2a2e33');
-  // population: one hue, darker to brighter, thresholds in people per location
-  const POP_STEPS = [1000, 3000, 8000, 15000, 30000, 60000];
-  const POP_RAMP = ['#3b3326', '#5a4524', '#7d5a22', '#a3721f', '#c98f2a', '#e6b24f', '#f8dc94'];
-  const RANK_COL = [hex('#4d4b45'), hex('#c98500'), hex('#f0d58c')];
+  const hsv = (h: number, s: number, v: number) => [5, 3, 1].map(n => { const k = (n + h * 6) % 6; return Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1)))); });
+  const WASTE = hex('#3a3833'), FREE = hex('#57554d'), DIM = hex('#2a2e33');
+  // the game lights its flat map-mode colours over the terrain, which warms and lifts them; a fixed tint stands in
+  const lit = (c: number[]) => mix(c, hex('#b4966a'), 0.28);
+  // NMapColors MAP_COLOR_MIN .. MAX (defines/graphic/00_graphics.txt): black, dark red, gold, green, bright green
+  const GRAD = [hsv(0, .85, .015), hsv(0, .85, .34), hsv(.13, .95, .75), hsv(.31, .9, .6), hsv(.31, 1, 1)];
+  const grad = (t: number) => { const f = Math.min(1, Math.max(0, t)) * 4, k = Math.min(3, Math.floor(f)); return lit(mix(GRAD[k], GRAD[k + 1], f - k)); };
+  // population on the game's log scale: 1,000 people at the bottom, x4.7934 a step (the legend's 4,793 / 22,977 / 110K / 527K)
+  const POP_STOPS = [0, 1, 2, 3, 4].map(k => 1000 * 527.96 ** (k / 4));
+  const popT = (p: number) => p > 1000 ? Math.log(p / 1000) / Math.log(527.96) : 0;
   const RANK_NAME = ['Rural', 'Town', 'City'];
+  // water by distance from land (half raster px): the shallows' cyan glow down to the open ocean; 255 = off the map
+  const SEA_STOPS: [number, string][] = [[0, '#64ccd9'], [4, '#4cb4d8'], [10, '#3592c8'], [20, '#2b74b2'], [40, '#2a62a8'], [80, '#2b4f92']];
+  const SHALLOW = hex('#64ccd9'), OFFMAP = hex('#2a2520');
+  const seaPal = new Uint8ClampedArray(256 * 3);
+  for (let d = 0; d < 255; d++) {
+    const j = SEA_STOPS.findIndex(s => s[0] > d), [a, b] = j < 0 ? [SEA_STOPS.at(-1)!, SEA_STOPS.at(-1)!] : [SEA_STOPS[j - 1], SEA_STOPS[j]];
+    seaPal.set(mix(hex(a[1]), hex(b[1]), b[0] > a[0] ? (d - a[0]) / (b[0] - a[0]) : 0), d * 3);
+  }
+  seaPal.set(OFFMAP, 255 * 3);
+  const sea = $derived(M ? {d: seaDistance(M), pal: seaPal} : undefined);
+  const devMax = $derived(I?.locs.dev ? Math.max(...I.locs.dev) : 42);
+  // numbers as the game's legend and map labels write them: 4,793 / 110K / 3.717M
+  const gameNum = (n: number) => n >= 1e6 ? (Math.floor(n / 1e3) / 1e3).toFixed(3) + 'M' : n >= 1e5 ? Math.floor(n / 1e3) + 'K' : Math.floor(n).toLocaleString('en');
 
   const colourOf = $derived.by(() => {
     if (!N || !I) return null;
@@ -49,9 +68,10 @@
     const set = (k: 'culture' | 'religion' | 'topo' | 'veg' | 'climate') => (i: number) => info.sets[k][info.locs[k][i]]?.[1] ?? FREE;
     const political = (i: number) => n.countries[n.locs[i][4]]?.color ?? FREE;
     if (m === 'political') return political;
-    if (m === 'goods') return (i: number) => g ? (n.locs[i][1] === g ? GOLD : mix(political(i), DIM, 0.8)) : mix(political(i), DIM, 0.55);
-    if (m === 'pop') return (i: number) => { const p = info.locs.pop[i] * 1000; return hex(POP_RAMP[POP_STEPS.filter(t => p >= t).length]); };
-    if (m === 'rank') return (i: number) => RANK_COL[n.locs[i][5]];
+    if (m === 'goods') return (i: number) => { const c = lit(info.goods[n.locs[i][1]] ?? FREE); return g && n.locs[i][1] !== g ? mix(c, DIM, 0.8) : c; };
+    if (m === 'pop') return (i: number) => grad(popT(info.locs.pop[i] * 1000));
+    if (m === 'dev') return (i: number) => grad((info.locs.dev?.[i] ?? 0) / devMax);
+    if (m === 'rank') return (i: number) => lit(info.ranks[n.locs[i][5]][1]);
     return set(m);
   });
   const palette = $derived.by(() => {
@@ -60,7 +80,7 @@
     const put = (code: number, col: number[], b1: number, b2: number) => {
       P.set(col, code * 9); P.set(mix(col, [0, 0, 0], b1), code * 9 + 3); P.set(mix(col, [0, 0, 0], b2), code * 9 + 6);
     };
-    put(0, SEA, 0.45, 0); put(1, WASTE, 0, 0); oid[0] = -2; oid[1] = -3;
+    put(0, SHALLOW, 0.25, 0); put(1, WASTE, 0, 0); oid[0] = -2; oid[1] = -3;
     N.locs.forEach((l, i) => {
       oid[i + 2] = l[4] ? owners.get(l[4]) ?? (owners.set(l[4], owners.size + 1), owners.size) : -1 - i;
       put(i + 2, colourOf(i), 0.55, mode === 'political' ? 0.12 : 0.2);
@@ -73,7 +93,7 @@
   // biggest first, skipped where they'd overlap
   const labels = $derived.by(() => {
     if (!N || !M) return [];
-    const n = N, mw = M.w, out: {t: string; x: number; y: number; size: number}[] = [];
+    const n = N, mw = M.w, out: {t: string; pop: number; x: number; y: number; w: number; h: number}[] = [];
     for (const c of Object.values(n.countries)) {
       if (!c.locs.length) continue;
       const pts = c.locs.map(i => [lx(i), ly(i)]), ref = pts[c.cap != null ? Math.max(0, c.locs.indexOf(c.cap)) : 0][0];
@@ -87,10 +107,13 @@
       }
       const xs = core.map(p => p[0]), ys = core.map(p => p[1]);
       const w = Math.max(...xs) - Math.min(...xs) + 8, h = Math.max(...ys) - Math.min(...ys) + 8;
-      out.push({t: c.name, x: xs.reduce((a, b) => a + b, 0) / xs.length, y: ys.reduce((a, b) => a + b, 0) / ys.length, size: Math.min(w / (c.name.length * 0.62), h * 0.55, 60)});
+      out.push({t: c.name, pop: Object.values(c.pops).reduce((a, b) => a + b, 0) * 1000, x: xs.reduce((a, b) => a + b, 0) / xs.length, y: ys.reduce((a, b) => a + b, 0) / ys.length, w, h});
     }
-    return out.sort((a, b) => b.size - a.size);
+    return out;
   });
+  // the population map mode labels countries with their total population, as the game does
+  const shownLabels = $derived(labels.map(l => { const t = mode === 'pop' ? gameNum(l.pop) : l.t; return {t, x: l.x, y: l.y, size: Math.min(l.w / (t.length * 0.62), l.h * 0.55, 60)}; })
+    .sort((a, b) => b.size - a.size));
   // goods icons, loaded as they're needed; each load repaints
   const imgs = new Map<string, HTMLImageElement>();
   let loaded = $state(0);
@@ -103,7 +126,7 @@
     .sort((a, b) => (N!.locs[b][1] === good ? 1e6 : 0) + G[N!.locs[b][1]].price - (N!.locs[a][1] === good ? 1e6 : 0) - G[N!.locs[a][1]].price) : []);
 
   const paint = $derived.by(() => {
-    const riv = rivers ? R : undefined, lab = names && mode !== 'goods' ? labels : [], icons = goodsRank, mw = M?.w ?? 4096, g = good;
+    const riv = rivers ? R : undefined, lab = names && mode !== 'goods' ? shownLabels : [], icons = goodsRank, mw = M?.w ?? 4096, g = good;
     void loaded;
     return (ctx: CanvasRenderingContext2D, v: View, dpr: number) => {
       const k = v.s * dpr, cw = ctx.canvas.width, ch = ctx.canvas.height;
@@ -118,7 +141,7 @@
             const alpha = Math.min(1, Math.max(0, (v.s - [1.2, 0.7, 0.35, 0][w]) / 0.5));
             if (!alpha) return;
             ctx.globalAlpha = alpha;
-            ctx.strokeStyle = '#4f8fc7';
+            ctx.strokeStyle = '#3a8bd6';
             ctx.lineWidth = widths[w] * Math.min(2, Math.max(0.6, Math.sqrt(v.s))) * dpr * WORLD_SCALE / k;
             ctx.stroke(p);
           });
@@ -193,8 +216,9 @@
       const t = new Map(tally(i => info.locs[mode as 'topo'][i], () => 1));
       return {title: 'In view', unit: 'locations', rows: info.sets[mode].map(([nm, c], k) => ({col: `rgb(${c.join(',')})`, name: nm, v: t.get(k) ?? 0})).filter(r => r.v)};
     }
-    if (mode === 'rank') { const t = new Map(tally(i => n.locs[i][5], () => 1)); return {title: 'In view', unit: 'locations', rows: RANK_NAME.map((nm, k) => ({col: `rgb(${RANK_COL[k].join(',')})`, name: nm, v: t.get(k) ?? 0}))}; }
-    if (mode === 'pop') return {title: 'People per location', unit: '', rows: POP_RAMP.map((c, k) => ({col: c, name: k ? (k < POP_STEPS.length ? `${people(POP_STEPS[k - 1])} – ${people(POP_STEPS[k])}` : `${people(POP_STEPS[k - 1])}+`) : `under ${people(POP_STEPS[0])}`, v: -1}))};
+    if (mode === 'rank') { const t = new Map(tally(i => n.locs[i][5], () => 1)); return {title: 'In view', unit: 'locations', rows: info.ranks.map(([nm, c], k) => ({col: `rgb(${lit(c).join(',')})`, name: nm, v: t.get(k) ?? 0}))}; }
+    if (mode === 'pop') return {title: 'People per location', unit: '', rows: POP_STOPS.map((p, k) => ({col: `rgb(${grad(k / 4).join(',')})`, name: gameNum(p), v: -1}))};
+    if (mode === 'dev') return {title: 'Development', unit: '', rows: [0, 1, 2, 3, 4].map(k => ({col: `rgb(${grad(k / 4).join(',')})`, name: String(Math.round(devMax * k / 4)), v: -1}))};
     return null;
   });
   const goodsInView = $derived(N && mode === 'goods' ? tally(i => N!.locs[i][1], () => 1).filter(([g]) => G[g as string]) as [string, number][] : []);
@@ -203,7 +227,7 @@
   const about = (i: number) => {
     const l = N!.locs[i], c = N!.countries[l[4]], s = (k: 'culture' | 'religion' | 'topo' | 'veg' | 'climate') => I?.sets[k][I.locs[k][i]]?.[0];
     return {name: l[0], owner: c?.name, tag: l[4], area: N!.areas[l[6]], good: G[l[1]]?.name, rank: RANK_NAME[l[5]],
-      culture: s('culture'), religion: s('religion'), topo: s('topo'), veg: s('veg'), climate: s('climate'), pop: I ? Math.round(I.locs.pop[i] * 1000) : 0};
+      culture: s('culture'), religion: s('religion'), topo: s('topo'), veg: s('veg'), climate: s('climate'), pop: I ? Math.round(I.locs.pop[i] * 1000) : 0, dev: I?.locs.dev?.[i]};
   };
 </script>
 
@@ -215,6 +239,7 @@
   <dl>
     <dt>Owner</dt><dd>{#if a.owner}<span class="fl"><img src="flags/{a.tag}.png" alt="" onerror={e => (e.currentTarget as HTMLElement).remove()}></span>{a.owner}{:else}Unowned{/if}</dd>
     {#if a.pop}<dt>Pops</dt><dd>{a.pop.toLocaleString('en')}</dd>{/if}
+    {#if a.dev}<dt>Development</dt><dd>{a.dev}</dd>{/if}
     {#if a.culture}<dt>Culture</dt><dd>{a.culture}</dd>{/if}
     {#if a.religion}<dt>Religion</dt><dd>{a.religion}</dd>{/if}
     {#if a.good}<dt>Produces</dt><dd><img class="ic" src="icons/goods/{N!.locs[i][1]}.png" alt="">{a.good}</dd>{/if}
@@ -258,7 +283,7 @@
   </aside>
   <main>
     {#if M && palette}
-      <MapCanvas {M} P={palette.P} oid={palette.oid} {fit} {H} bind:W bind:pan {paint} resetTitle="Whole world"
+      <MapCanvas {M} P={palette.P} oid={palette.oid} {sea} {fit} {H} bind:W bind:pan {paint} resetTitle="Whole world"
         onhover={h => hover = h} onpick={i => picked = i >= 0 ? i : null}>
         {#snippet children(v: View)}
           {#if picked != null}<span class="wmark" style="left:{(lx(picked) - v.x0) * v.s}px;top:{(ly(picked) - v.y0) * v.s}px"></span>{/if}

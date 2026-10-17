@@ -474,9 +474,10 @@ ranks = {k: get(v, 'rank') for k, _, v in get(setup('07_cities_and_buildings.txt
 loc_pops = {k: [(get(d, 'type'), get(d, 'culture'), get(d, 'religion'), num(get(d, 'size')) or 0) for x, _, d in v if x == 'define_pop']
             for k, _, v in get(setup('06_pops.txt'), 'locations') or [] if isinstance(v, list)}  # location -> [(type, culture, religion, thousands)]
 def rgb(kind, a, b, c):
+    frac = any('.' in str(x) for x in (a, b, c))  # rgb { 0.36 0.13 0.28 } is 0-1, rgb { 92 33 71 } is 0-255
     a, b, c = float(a), float(b), float(c)
     if kind == 'rgb':
-        return [round(a), round(b), round(c)]
+        return [round(x * 255) for x in (a, b, c)] if frac else [round(a), round(b), round(c)]
     h, s, v = (a / 360, b / 100, c / 100) if kind == 'hsv360' else (a, b, c)
     return [round(x * 255) for x in colorsys.hsv_to_rgb(h, s, v)]
 colors = {m[0]: rgb(*m[1:]) for f in glob.glob(f'{MM}/named_colors/*.txt')
@@ -588,8 +589,30 @@ for kind, d, vals in (('culture', load('cultures'), loc_cul), ('religion', load(
     cls[kind] = [ix.get(v, -1) for v in vals]
 cls['pop'] = [round(sum(p[3] for p in loc_pops.get(key_of[i], [])), 3) for i in range(len(L))]
 cls['harbor'] = [round(float(get(tmpl.get(key_of[i], []), 'natural_harbor_suitability') or 0), 2) for i in range(len(L))]
+# development is worked out by the game at start from rules (setup/14_development.txt), so it's read from the
+# first autosave of a 1337 campaign (start.py's): the location keys in id order, then each location's block
+SAVE = os.path.expanduser('~/.local/share/Steam/steamapps/compatdata/3450310/pfx/drive_c/users/steamuser/Documents/'
+                          'Paradox Interactive/Europa Universalis V/save games/autosave_9e705812-68e4-452a-9476-e58419626384.eu5')
+if os.path.exists(SAVE):
+    import mmap
+    with open(SAVE, 'rb') as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as m:
+        a = m.find(b'\t\tlocations={') + 13
+        order = m[a:m.find(b'}', a)].decode().split()
+        a = m.find(b'\nlocations={\n')
+        blk = m[a:m.find(b'\n}', a + 1)].decode()
+    dev = {}
+    for chunk in re.split(r'\n\t\t(?=\d+=\{)', blk)[1:]:
+        d = re.search(r'\n\t\t\tdevelopment=([\d.]+)', chunk)
+        dev[order[int(chunk[:chunk.index('=')]) - 1]] = float(d.group(1)) if d else 0
+    cls['dev'] = [round(dev.get(key_of[i], 0), 2) for i in range(len(L))]
+    print('development: Stockholm', dev.get('stockholm'), 'max', max(cls['dev']), 'zero', cls['dev'].count(0))
+else:
+    print(f'warning: no save at {SAVE}, no development map mode')
+goods_col = {g: colors[f'goods_{g}'] for g in {l[1] for l in L if l[1]} if f'goods_{g}' in colors}
+rank_defs = load('location_ranks')
+rank_col = [[name(k, k), col(get(rank_defs[k], 'color'))] for k in ('rural_settlement', 'town', 'city')]
 with open(f'{OUT}/public/mapinfo.json', 'w') as f:
-    json.dump({'sets': sets, 'locs': cls}, f, separators=(',', ':'), ensure_ascii=False)
+    json.dump({'sets': sets, 'locs': cls, 'goods': goods_col, 'ranks': rank_col}, f, separators=(',', ':'), ensure_ascii=False)
 assert all(len(v) == len(L) for v in cls.values())
 mos = countries['MOS']['cap']
 print('mapinfo:', {k: len(v) for k, v in sets.items()}, 'missing:', {k: v.count(-1) for k, v in cls.items() if k not in ('pop', 'harbor')}, os.path.getsize(f'{OUT}/public/mapinfo.json'), 'bytes')
