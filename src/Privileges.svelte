@@ -14,15 +14,15 @@
     types: string[]; availability: string[];
   }
   interface PData { estates: { id: string; name: string; count: number }[]; privileges: Priv[] }
-  let cache: Promise<PData> | undefined;
-  const loadPrivileges = () => cache ??= fetch('privileges.json').then(r => r.json());
 </script>
 
 <script lang="ts">
+  import { loadPrivileges, preloadCards } from './lib/cards';
 
   let { id }: { id: string | null } = $props();
   let D = $state<PData>();
-  loadPrivileges().then(d => D = d);
+  loadPrivileges().then(d => D = d as unknown as PData);
+  preloadCards();
 
   const TYPE_LABEL: Record<string, string> = {tag: 'Country', culture: 'Culture', religion: 'Religion', region: 'Region', government: 'Government', unlock: 'Unlock', other: 'Other', any: 'Any of', all: 'Everyone'};
   const AVAIL: [string, string][] = [['', 'Any'], ['all', 'Everyone'], ['tag', 'Country-specific'], ['culture', 'Culture'], ['religion', 'Religion'], ['region', 'Region'], ['other', 'Other']];

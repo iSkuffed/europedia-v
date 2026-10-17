@@ -4,6 +4,8 @@
   import { gChip, pIcon, pName, fmt, esc, popDemand, icon } from './lib/production';
   import NationMap from './NationMap.svelte';
   import { loadNations, loadUnique, loadStart, analyse, subjectsOf, UPPER, type NationData, type Unique, type StartData } from './lib/nations';
+  import { preloadCards } from './lib/cards';
+  preloadCards();
 
   let { tag }: { tag: string | null } = $props();
   const G = DATA.goods;
@@ -130,7 +132,7 @@
           {#if st}
             <section class="card"><h4 class="gold">Starting position<small>{st.gov ? sn(st.gov) : ''}</small></h4>
               {#if st.reforms.length}<div class="flbl">Government reforms</div>
-                <div class="minicards sp-reforms">{#each st.reforms as r}<span class="minicard"><span class="art sm"><img src="icons/reforms/{r}.webp" alt="" loading="lazy"></span>{sn(r)}</span>{/each}</div>{/if}
+                <div class="minicards sp-reforms">{#each st.reforms as r}<span class="minicard" data-reform={r}><span class="art sm"><img src="icons/reforms/{r}.webp" alt="" loading="lazy"></span>{sn(r)}</span>{/each}</div>{/if}
               <div class="flbl">Estate privileges</div>
               {#each privByEstate as [e, ps] (e)}
                 <div class="sp"><span class="who">{#if ESTATE_POP[e]}{@html pIcon(ESTATE_POP[e])}{/if}{sn(e)}</span>
@@ -176,7 +178,7 @@
                   {#each grp.items as u (u.kind + u.id)}
                     <div class="uq" class:withart={u.kind === 'privilege' || u.kind === 'reform'}>
                       {#if u.kind === 'privilege'}<a class="art sm" href="#e/{u.id}"><img src="icons/privileges/{u.id}.webp" alt="" loading="lazy"></a>
-                      {:else if u.kind === 'reform'}<span class="art sm"><img src="icons/reforms/{u.id}.webp" alt="" loading="lazy"></span>{/if}
+                      {:else if u.kind === 'reform'}<span class="art sm" data-reform={u.id}><img src="icons/reforms/{u.id}.webp" alt="" loading="lazy"></span>{/if}
                       <div>
                       <div class="uh"><b title={u.desc}>{u.name}</b>
                         {#if grp.k === ''}<span class="tag">{u.kind}</span>{/if}

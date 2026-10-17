@@ -14,8 +14,8 @@ export function initTooltips(linkTip: (el: Element) => string) {
   let tipEl: HTMLElement | null = null;
   document.addEventListener('mouseover', e => {
     const t = e.target as HTMLElement;
-    // a goods/building link wins over the name-only title on its own icon
-    const el = t.closest<HTMLElement>('a[href^="#g/"], a[href^="#b/"]') || t.closest<HTMLElement>('[title], [data-tip]');
+    // a goods/building/privilege link or reform card wins over the name-only title on its own icon
+    const el = t.closest<HTMLElement>('a[href^="#g/"], a[href^="#b/"], a[href^="#e/"], [data-reform]') || t.closest<HTMLElement>('[title], [data-tip]');
     if (t !== el && t.title) { t.dataset.tip = t.title; t.removeAttribute('title'); }
     if (el === tipEl) return;  // still on the same entry: keep the tooltip exactly as first shown
     tipEl = el;

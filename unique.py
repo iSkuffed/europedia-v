@@ -190,10 +190,18 @@ with open(path, 'w', encoding='utf-8') as fh:
 ART = {os.path.basename(f)[:-4]: f for d in (GAME, *glob.glob(f'{GAME}/dlc/*'))
        for f in glob.glob(f'{d}/main_menu/gfx/interface/icons/government_reforms/illustrations/*.dds')}
 os.makedirs(f'{OUT}/public/icons/reforms', exist_ok=True)
+REF = {}  # every reform's name, description and modifiers for the card tooltips -> public/reforms.json
 for rid, b in load('government_reforms').items():
+    REF[rid] = {'name': name(rid), 'mods': mods_of(b)}
+    if desc(rid):
+        REF[rid]['desc'] = desc(rid)
+    if get(b, 'major') == 'yes':
+        REF[rid]['major'] = True
     dst = f'{OUT}/public/icons/reforms/{rid}.webp'
     if not os.path.exists(dst):
         subprocess.run(['magick', ART.get(get(b, 'icon') or rid, ART['_default']), '-strip', '-quality', '88', dst], check=True)
+with open(f'{OUT}/public/reforms.json', 'w', encoding='utf-8') as fh:
+    json.dump(REF, fh, separators=(',', ':'), ensure_ascii=False)
 
 if __name__ == '__main__':
     # restriction self-check: OR of tags, exclusions ignored, AND intersects, >MAXTAGS not an issue here

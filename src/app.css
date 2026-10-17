@@ -195,6 +195,9 @@ a.tag:hover { color: var(--gold); border-color: var(--frame); }
 #tip .tr .req { color: var(--in); }
 #tip .tr .v.bad { color: #e06060; }
 #tip .tt { padding: 6px 12px; }
+#tip .th img.tart { flex: none; width: 48px; height: 68px; border: 1px solid var(--frame); border-radius: 4px; box-shadow: 0 2px 6px #0009; }
+#tip .tg { padding: 5px 12px 1px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--gold); }
+#tip .tw { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--dim); margin-right: 4px; }
 #tip .tn { padding: 6px 12px; color: var(--dim); font-style: italic; font-size: 13px; border-top: 1px solid var(--line); }
 
 /* what changes demand */
