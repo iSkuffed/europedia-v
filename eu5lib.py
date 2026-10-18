@@ -59,6 +59,8 @@ def text(s):  # loc string -> plain text: drop formatting, resolve the few runti
     s = re.sub(r"\[GetCountry\('(\w+)'\)\.GetName\w*\]", lambda m: loc.get(m.group(1), m.group(1)), s)
     s = re.sub(r'\[[\w.\x27()]*GetRulerTitle\]', 'ruler', s)
     s = re.sub(r'\[[\w.\x27()]*GetFlavorRank\]', 'realm', s)
+    s = re.sub(r"\[GetCharacter\('(\w+)'\)\.GetName\w*\]", lambda m: m.group(1).replace('_', ' ').title(), s)  # kublai_khan -> Kublai Khan
+    s = re.sub(r"\[GetUniqueInternationalOrganization\('(\w+)'\)\.GetName\w*\]", lambda m: text(loc[m.group(1)]) if m.group(1) in loc else human(m.group(1)), s)
     s = re.sub(r'\[(\w+)(?:\|\w+)?\]', lambda m: text(loc[m.group(1)]).lower() if m.group(1) in loc else m.group(1).replace('_', ' '), s)
     s = re.sub(r'\[[^\]]*\]', '', s)  # unresolvable runtime text
     s = re.sub(r'#\w+\s?|#!|@\w+!\s?|\$\w+\$', '', s)
