@@ -10,6 +10,8 @@
   import { AGE, setAge } from './lib/age.svelte';
   import { loadNations, type NationData } from './lib/nations';
   import { loadPrivileges } from './lib/cards';
+  import { SCOPE, setScope, loadScope } from './lib/scope.svelte';
+  import { tick } from 'svelte';
   const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'], AGES = Object.keys(DATA.ages).map(Number);
 
   let side = $state<HTMLElement>(), main = $state<HTMLElement>(), search: HTMLInputElement;
@@ -36,6 +38,24 @@
     if (t) location.hash = `n/${t}`; else if (e) location.hash = e[1]; else searchGo(search.value);
     search.value = '';
   }
+  // "viewing as" a nation: the flag clears it, the name (or the globe in Global view) opens the nation picker
+  let picking = $state(false), pickIn = $state<HTMLInputElement>(), nats = $state<[string, string][]>([]);  // [label, tag]
+  const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().trim();
+  function openPick() {
+    picking = true;
+    tick().then(() => pickIn?.focus());
+    loadScope().then(d => {
+      const cs = Object.entries(d.countries), seen = new Set<string>(), dup = new Set(cs.map(c => c[1].name).filter(n => seen.has(n) || !seen.add(n)));
+      const ns: [string, string][] = cs.map(([t, c]) => [dup.has(c.name) ? `${c.name} (${t})` : c.name, t]);
+      ns.push(['Yuán', 'CHI']);  // the setup calls the 1337 Yuan "China"; the game shows it as Yuán
+      nats = ns.sort((a, b) => a[0].localeCompare(b[0]));
+    });
+  }
+  function pick() {
+    const q = fold(pickIn!.value), hit = q && (nats.find(n => fold(n[0]) === q) || nats.find(n => fold(n[0]).startsWith(q)));
+    if (hit) setScope(hit[1]);
+    picking = false;
+  }
   function focusSearch(e: KeyboardEvent) {
     if (e.key === '/' && document.activeElement !== search) { e.preventDefault(); search.focus(); }
   }
@@ -44,17 +64,32 @@
 <svelte:window onkeydown={focusSearch} onhashchange={() => hash = location.hash} />
 
 <header>
-  <h1><a href="#/" title="Home">Europedia V</a><span class="beta" title="Work in progress: some data may be missing or wrong, and layouts may break.">Beta</span></h1>
+  <div class="brand">
+    <h1><a href="#/" title="Home">Europedia V</a><span class="beta" title="Work in progress: some data may be missing or wrong, and layouts may break.">Beta</span></h1>
+    <small class="legal" title="Fan-made, not affiliated with Paradox Interactive. Game data and art © Paradox Interactive.">Fan-made · not affiliated with Paradox</small>
+  </div>
   <nav><a href="#/" class:on={!isPops && !isNations && !isPriv && !isResearch && !isMap}>Production Chains</a><a href="#pops" class:on={isPops}>Pops</a><a href="#n" class:on={isNations}>Nations</a><a href="#m" class:on={isMap}>Map</a><a href="#e" class:on={isPriv}>Privileges</a><a href="#r" class:on={isResearch}>Research</a></nav>
   <input id="search" bind:this={search} onchange={go} onfocus={loadSearch} placeholder="Search goods, nations, reforms…  (/)" title="Goods, buildings, pops, nations, privileges and reforms. Press / to jump here." list="names" autocomplete="off">
   <datalist id="names">{#each searchNames as n}<option value={n}></option>{/each}{#each nationNames as n}<option value={n}></option>{/each}{#each privNames as n}<option value={n}></option>{/each}</datalist>
+  <div class="viewas">
+    {#if picking}
+      <input class="vpick" bind:this={pickIn} list="nats" placeholder="View as nation…" autocomplete="off" onchange={pick}
+             onblur={() => setTimeout(() => picking = false, 200)} onkeydown={e => e.key === 'Escape' && (picking = false)}>
+      <datalist id="nats">{#each nats as n}<option value={n[0]}></option>{/each}</datalist>
+    {:else if SCOPE.tag}
+      <button class="vflag" onclick={() => setScope(null)} title="Back to Global view"><span class="fl"><img src="flags/{SCOPE.tag}.png" alt=""></span><span class="x">✕</span></button>
+      <button class="vname" onclick={openPick} title="Viewing as {SCOPE.name}: pages show only what applies to it. Click to pick another nation.">{SCOPE.name || SCOPE.tag}</button>
+    {:else}
+      <button class="vglobe" onclick={openPick} title="Global view: everything, for every nation. Click to view the site as one nation.">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9c-2.6-2.6-3.9-5.6-3.9-9S9.4 5.6 12 3z"/></svg>Global</button>
+    {/if}
+  </div>
   <div class="agesel" title="The age you are playing in: production shows what's available, pop demand includes that age's modifiers">
     <span class="flbl">Age</span>
     <button class="all" class:on={!AGE.v} onclick={() => setAge(null)}>All</button>
     {#each AGES as a}<button class:on={AGE.v === a} onclick={() => setAge(a)} title="Age {ROMAN[a]}: {DATA.ages[a]}">{ROMAN[a]}</button>{/each}
     {#if AGE.v}<span class="agename">{DATA.ages[AGE.v]}</span>{/if}
   </div>
-  <small class="legal">Fan-made, not affiliated with Paradox Interactive. Game data and art © Paradox Interactive.</small>
 </header>
 {#if isPops}
   <Pops id={hash.startsWith('#p/') ? hash.slice(3) : null} />

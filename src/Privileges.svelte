@@ -27,6 +27,8 @@
 
 <script lang="ts">
   import { loadPrivileges, preloadCards } from './lib/cards';
+  import { SCOPE } from './lib/scope.svelte';
+  import { fits, type Fit } from './lib/fit';
 
   let { id }: { id: string | null } = $props();
   let D = $state<PData>();
@@ -42,6 +44,62 @@
   let mode = $state<'priv' | 'reform'>('priv');
   $effect.pre(() => { if (id) mode = id.startsWith(RP) ? 'reform' : 'priv'; });
   const setMode = (m: 'priv' | 'reform') => { mode = m; if (id) location.hash = 'e'; };
+  // "viewing as" nation (top bar): hide what it can't have; 'maybe' (unlocks, events, free-text conditions) stays, marked
+  const sc = $derived(SCOPE.ctx);
+  const fitOf = (x: { who: WItem[] }): Fit => sc ? fits(x.who, sc) : 'yes';
+  const PV = $derived(D ? D.privileges.filter(p => fitOf(p) !== 'no') : []);
+  const RV = $derived(D ? D.reforms.filter(r => fitOf(r) !== 'no') : []);
+  const pool = $derived(mode === 'reform' ? RV : PV);
+  const hiddenN = $derived(D ? (mode === 'reform' ? D.reforms.length - RV.length : D.privileges.length - PV.length) : 0);
+  const maybeN = $derived(pool.filter(x => fitOf(x) === 'maybe').length);
+
+  // facet search: a nation, culture, religion or region named by the who conditions
+  // The game shows tag CHI as "Yuán" at its start date (loc YUA) but the data calls it China, so "Yuan" must find CHI too.
+  const ALIAS: Record<string, string> = { CHI: 'Yuan' };
+  const norm = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  const REGION_KIND: Record<string, string> = { region: 'Region', area: 'Area', 'sub-continent': 'Sub-continent', continent: 'Continent', owns: 'Region' };
+  function whatOf(it: WItem): string | null {  // which kind of thing a condition names, null = not a facet
+    if (it.type === 'tag') return it.kind === 'subject of' ? null : 'Nation';
+    if (it.type === 'culture') return it.kind === 'culture group' ? 'Culture group' : 'Culture';
+    if (it.type === 'religion') return it.kind === 'religion group' ? 'Religion group' : 'Religion';
+    if (it.type === 'region') return REGION_KIND[it.kind.replace('capital in ', '')] ?? 'Region';
+    return null;
+  }
+  // positive conditions only (a "not" item or anything inside one names what is excluded, not what is unique)
+  function walkWho(its: WItem[], f: (it: WItem) => void) {
+    for (const it of its) { if (it.not) continue; if (it.ids) f(it); walkWho([...(it.any ?? []), ...(it.all ?? [])], f); }
+  }
+  interface Facet { key: string; id: string; what: string; label: string; alt: string[]; p: number; r: number; tag?: boolean }
+  let facet = $state<Facet | null>(null);
+  const fkey = (it: WItem, id: string) => `${it.type}:${id}`;
+  // built from privileges and reforms together (scoped), so a nation that only appears in one of them is still found
+  const facets = $derived.by(() => {
+    const m = new Map<string, Facet>();
+    for (const [list, k] of [[PV, 'p'], [RV, 'r']] as const) for (const x of list) {
+      const seen = new Set<string>();
+      walkWho(x.who, it => { const what = whatOf(it); if (what) it.ids!.forEach((id, i) => {
+        const key = fkey(it, id), name = it.names?.[i] ?? id, tag = it.type === 'tag';
+        if (seen.has(key)) return;
+        seen.add(key);
+        const f = m.get(key) ?? { key, id, what, label: tag && ALIAS[id] ? `${ALIAS[id]} (${name})` : name, alt: [name, ...(tag && ALIAS[id] ? [ALIAS[id]] : [])], p: 0, r: 0, tag };
+        f[k]++; m.set(key, f);
+      }); });
+    }
+    return [...m.values()];
+  });
+  const sugg = $derived.by(() => {
+    const q = norm(filter.trim());
+    if (facet || q.length < 2) return [];
+    return facets.filter(f => f.alt.some(a => norm(a).includes(q))).sort((a, b) => +!b.alt.some(x => norm(x).startsWith(q)) - +!a.alt.some(x => norm(x).startsWith(q)) || b.p + b.r - a.p - a.r).slice(0, 8);
+  });
+  const pick = (f: Facet | null) => {
+    facet = f; filter = '';
+    if (f && !(mode === 'reform' ? f.r : f.p)) mode = mode === 'reform' ? 'priv' : 'reform';  // nothing here: show the other list
+    if (f && id) location.hash = 'e';
+  };
+  function hasFacet(who: WItem[]) { let ok = false; walkWho(who, it => { if (whatOf(it) && it.ids!.some(id => fkey(it, id) === facet!.key)) ok = true; }); return ok; }
+  const flagOff0 = (e: Event) => (e.currentTarget as HTMLElement).remove();
+
   let grpSel = $state<string[]>([]), ageSel = $state<string[]>([]), rkind = $state('');
   let cards = $state(localStorage.getItem('privView') === 'cards');
   $effect(() => localStorage.setItem('privView', cards ? 'cards' : 'list'));
@@ -56,18 +114,18 @@
   const R = $derived(isR ? rById[id!.slice(RP.length)] : undefined);
   const rshown = $derived.by(() => {
     if (!D) return [];
-    const q = filter.trim().toLowerCase();
-    return D.reforms.filter(r => (!grpSel.length || grpSel.includes(r.group)) && (!ageSel.length || (r.age && ageSel.includes(r.age))) && (!avail || r.availability.includes(avail))
+    const q = norm(filter.trim());
+    return RV.filter(r => (!facet || hasFacet(r.who)) && (!grpSel.length || grpSel.includes(r.group)) && (!ageSel.length || (r.age && ageSel.includes(r.age))) && (!avail || r.availability.includes(avail))
       && (!rkind || (rkind === 'major') === r.major) && (!kind || (kind === 'all' ? r.availability.includes('all') : r.types.includes(kind)))
-      && (!q || (r.name + ' ' + r.id + ' ' + r.govName + ' ' + r.ageName + ' ' + r.whoText + ' ' + r.groups.flatMap(g => g.mods.concat(g.estate).map(m => m[0])).join(' ')).toLowerCase().includes(q)));
+      && (!q || norm(r.name + ' ' + r.id + ' ' + r.govName + ' ' + r.ageName + ' ' + r.whoText + ' ' + r.groups.flatMap(g => g.mods.concat(g.estate).map(m => m[0])).join(' ')).includes(q)));
   });
   const rgroupsShown = $derived(D ? D.reformGroups.map(g => ({g, list: rshown.filter(r => r.group === g.id)})).filter(g => g.list.length) : []);
   const toggleIn = (a: string[], v: string) => a.includes(v) ? a.filter(x => x !== v) : [...a, v];
   const shown = $derived.by(() => {
     if (!D) return [];
-    const q = filter.trim().toLowerCase();
-    return D.privileges.filter(p => (!estSel.length || estSel.includes(p.estate)) && (!avail || p.availability.includes(avail)) && (!kind || (kind === 'all' ? p.availability.includes('all') : p.types.includes(kind)))
-      && (!q || (p.name + ' ' + p.id + ' ' + p.estateName + ' ' + p.whoText + ' ' + p.groups.flatMap(g => g.mods.concat(g.estate).map(m => m[0])).join(' ')).toLowerCase().includes(q)));
+    const q = norm(filter.trim());
+    return PV.filter(p => (!facet || hasFacet(p.who)) && (!estSel.length || estSel.includes(p.estate)) && (!avail || p.availability.includes(avail)) && (!kind || (kind === 'all' ? p.availability.includes('all') : p.types.includes(kind)))
+      && (!q || norm(p.name + ' ' + p.id + ' ' + p.estateName + ' ' + p.whoText + ' ' + p.groups.flatMap(g => g.mods.concat(g.estate).map(m => m[0])).join(' ')).includes(q)));
   });
   const groupsShown = $derived(D ? D.estates.map(e => ({e, list: shown.filter(p => p.estate === e.id)})).filter(g => g.list.length) : []);
   const toggleEst = (e: string) => estSel = estSel.includes(e) ? estSel.filter(x => x !== e) : [...estSel, e];
@@ -93,8 +151,9 @@
   const badges = (p: Priv | Reform): Badge[] => p.who.length ? p.who.map(badge) : [{type: 'all', label: 'Everyone', title: 'No restriction on who is offered it'}];
   const effLine = (p: Priv | Reform) => p.sum.length ? p.sum.join(' · ') : p.groups.flatMap(g => g.estate).map(m => `${m[0]} ${m[1]}`).slice(0, 2).join(' · ');
 
-  const availCount = $derived(D ? Object.fromEntries(AVAIL.slice(1).map(([k]) => [k, (mode === 'reform' ? D!.reforms : D!.privileges).filter(p => p.availability.includes(k)).length])) : {} as Record<string, number>);
+  const availCount = $derived(D ? Object.fromEntries(AVAIL.slice(1).map(([k]) => [k, pool.filter(p => p.availability.includes(k)).length])) : {} as Record<string, number>);
   const shownCount = $derived(mode === 'reform' ? rshown.length : shown.length);
+  const estCount = (id: string) => PV.filter(p => p.estate === id).length, grpCount = (id: string) => RV.filter(r => r.group === id).length;
   const flagOff = (e: Event) => (e.currentTarget as HTMLElement).remove();
 </script>
 
@@ -115,6 +174,23 @@
   {/if}
 {/snippet}
 
+{#snippet maybe(x: { who: WItem[] })}{#if fitOf(x) === 'maybe'}<span class="mb" title="The data can't confirm that {SCOPE.name} qualifies: it depends on an unlock, event or condition this page can't check.">conditional</span>{/if}{/snippet}
+
+{#snippet scopeNote()}
+  {#if sc}
+    <div class="wline snote"><span class="flbl">Viewing as</span><span class="wn"><span class="fl"><img src="flags/{sc.tag}.png" alt="" onerror={flagOff0}></span>{SCOPE.name}</span>
+      <span class="meta">{hiddenN} {mode === 'reform' ? 'reforms' : 'privileges'} hidden because they are not available to it{#if maybeN}; {maybeN} marked <span class="mb">conditional</span> because the data can't confirm them{/if}. Change the nation in the top bar.</span></div>
+  {/if}
+{/snippet}
+
+{#snippet notFor(x: { who: WItem[] })}
+  {#if sc && fitOf(x) !== 'yes'}
+    <p class="snote {fitOf(x)}"><span class="fl"><img src="flags/{sc.tag}.png" alt="" onerror={flagOff0}></span>
+      {#if fitOf(x) === 'no'}Not available to {SCOPE.name}: its conditions rule this nation out. It is hidden from your lists and shown here because you opened it directly.
+      {:else}The data can't confirm that {SCOPE.name} qualifies: it depends on an unlock, event or condition this page can't check.{/if}</p>
+  {/if}
+{/snippet}
+
 {#snippet wrows(list: WItem[])}
   {#each list as it}<div class="wrow"><span class="wt t-{it.type}">{TYPE_LABEL[it.type] ?? it.type}</span><div class="wc">{@render who(it)}</div></div>{/each}
 {/snippet}
@@ -129,19 +205,31 @@
   <aside>
     <h3>{mode === 'reform' ? 'Government reforms' : 'Estate privileges'}</h3>
     <div class="pfb mode"><button class:on={mode === 'priv'} onclick={() => setMode('priv')}>Privileges</button><button class:on={mode === 'reform'} onclick={() => setMode('reform')}>Reforms</button></div>
-    <input class="nfilter" placeholder={mode === 'reform' ? 'Find a reform…' : 'Find a privilege…'} bind:value={filter} autocomplete="off">
+    <input class="nfilter" placeholder={mode === 'reform' ? 'Find a reform, nation, culture…' : 'Find a privilege, nation, culture…'} bind:value={filter} autocomplete="off"
+      onkeydown={e => { if (e.key === 'Enter' && sugg[0]) pick(sugg[0]); else if (e.key === 'Escape') filter = ''; }}>
+    {#if sugg.length}
+      <div class="fsug">{#each sugg as f (f.key)}
+        <button onclick={() => pick(f)}>{#if f.tag}<span class="fl"><img src="flags/{f.id}.png" alt="" onerror={flagOff0}></span>{/if}<span class="fn">{f.label}</span><span class="fw">{f.what}</span><span class="fc">{#if f.p}{f.p} priv{/if}{#if f.p && f.r} · {/if}{#if f.r}{f.r} ref{/if}</span></button>
+      {/each}</div>
+    {/if}
+    {#if facet}
+      <div class="fpick"><span class="flbl">Only</span><span class="chip fsel">{#if facet.tag}<span class="fl"><img src="flags/{facet.id}.png" alt="" onerror={flagOff0}></span>{/if}<span class="nm">{facet.label}</span><i class="fw">{facet.what}</i>
+        <button class="fx" onclick={() => pick(null)} title="Remove the filter" aria-label="Remove the filter">×</button></span></div>
+      <p class="meta">{mode === 'reform' ? 'Reforms' : 'Privileges'} whose conditions name {facet.label}.
+        {#if mode === 'reform' ? facet.p : facet.r}<button class="lnk" onclick={() => setMode(mode === 'reform' ? 'priv' : 'reform')}>Also {mode === 'reform' ? facet.p + ' privileges' : facet.r + ' reforms'}</button>{/if}</p>
+    {/if}
     {#if D}
       <div class="pf">
         {#if mode === 'reform'}
           <div class="pfl">Government</div>
-          <div class="pfb">{#each D.reformGroups as g}<button class:on={grpSel.includes(g.id)} onclick={() => grpSel = toggleIn(grpSel, g.id)} title="{g.count} reforms">{g.name}</button>{/each}</div>
+          <div class="pfb">{#each D.reformGroups.filter(g => grpCount(g.id)) as g}<button class:on={grpSel.includes(g.id)} onclick={() => grpSel = toggleIn(grpSel, g.id)} title="{grpCount(g.id)} reforms">{g.name}</button>{/each}</div>
           <div class="pfl">Age</div>
           <div class="pfb">{#each D.ages as a}<button class:on={ageSel.includes(a.id)} onclick={() => ageSel = toggleIn(ageSel, a.id)}>{a.name}</button>{/each}</div>
           <div class="pfl">Kind</div>
           <div class="pfb">{#each [['', 'Any'], ['major', 'Major'], ['minor', 'Minor']] as [k, l]}<button class:on={rkind === k} onclick={() => rkind = k} title={k === 'major' ? 'Exclusive: only one major reform per country' : ''}>{l}</button>{/each}</div>
         {:else}
           <div class="pfl">Estate</div>
-          <div class="pfb">{#each D.estates as e}<button class:on={estSel.includes(e.id)} onclick={() => toggleEst(e.id)} title="{e.count} privileges">{e.name}</button>{/each}</div>
+          <div class="pfb">{#each D.estates.filter(e => estCount(e.id)) as e}<button class:on={estSel.includes(e.id)} onclick={() => toggleEst(e.id)} title="{estCount(e.id)} privileges">{e.name}</button>{/each}</div>
         {/if}
         <div class="pfl">Available to</div>
         <div class="pfb">{#each AVAIL as [k, l]}<button class:on={avail === k} onclick={() => avail = k} title={k ? `${availCount[k]} ${mode === 'reform' ? 'reforms' : 'privileges'}` : 'No filter'}>{l}</button>{/each}</div>
@@ -152,14 +240,14 @@
           {#each rgroupsShown as g (g.g.id)}
             <h3>{g.g.name}<span class="cnt">{g.list.length}</span></h3>
             {#each g.list as r (r.id)}
-              <a href="#e/{RP}{r.id}" class:on={id === RP + r.id}><span class="pn">{r.name}</span>{#if r.who.length}<span class="dot t-{r.types[0] ?? 'other'}" title={r.whoText}></span>{/if}</a>
+              <a href="#e/{RP}{r.id}" class:on={id === RP + r.id} class:dim={fitOf(r) === 'maybe'}><span class="pn">{r.name}</span>{#if r.who.length}<span class="dot t-{r.types[0] ?? 'other'}" title={r.whoText}></span>{/if}</a>
             {/each}
           {:else}<p class="meta">No reform matches.</p>{/each}
         {:else}
           {#each groupsShown as g (g.e.id)}
             <h3>{g.e.name}<span class="cnt">{g.list.length}</span></h3>
             {#each g.list as p (p.id)}
-              <a href="#e/{p.id}" class:on={id === p.id}><span class="pn">{p.name}</span>{#if p.who.length}<span class="dot t-{p.types[0] ?? 'other'}" title={p.whoText}></span>{/if}</a>
+              <a href="#e/{p.id}" class:on={id === p.id} class:dim={fitOf(p) === 'maybe'}><span class="pn">{p.name}</span>{#if p.who.length}<span class="dot t-{p.types[0] ?? 'other'}" title={p.whoText}></span>{/if}</a>
             {/each}
           {:else}<p class="meta">No privilege matches.</p>{/each}
         {/if}
@@ -174,6 +262,7 @@
     {:else if isR && !R}
       <div class="title"><div><h2>Unknown reform</h2><p class="desc">There is no government reform called “{id!.slice(RP.length)}”. <a class="wn" href="#e">Back to the overview</a>.</p></div></div>
     {:else if R}
+      {@render notFor(R)}
       <div class="title lg"><span class="art big"><img src="icons/reforms/{R.id}.webp" alt=""></span>
         <div><h2>{R.name}</h2>
           <div class="meta"><span>{R.major ? 'Major reform' : 'Government reform'}</span><span>{R.govName}</span>{#if R.age}<span>Age of {R.ageName}</span>{/if}{#if R.months}<span>takes {R.months} months to take effect</span>{/if}{#if R.locked}<span>locked once taken</span>{/if}{#if R.noRebel}<span>not for rebels</span>{/if}</div>
@@ -255,6 +344,7 @@
     {:else if id && !P}
       <div class="title"><div><h2>Unknown privilege</h2><p class="desc">There is no estate privilege called “{id}”. <a class="wn" href="#e">Back to the overview</a>.</p></div></div>
     {:else if P}
+      {@render notFor(P)}
       <div class="title lg"><span class="art big"><img src="icons/privileges/{P.id}.webp" alt=""></span>
         <div><h2>{P.name}</h2>
           <div class="meta"><span>{P.estateName}</span>{#if P.months}<span>takes {P.months} months to take effect</span>{/if}{#if !P.canRevoke}<span>cannot be revoked</span>{/if}</div>
@@ -335,9 +425,10 @@
       </div>
     {:else if mode === 'reform'}
       <div class="title"><div><h2>Government reforms</h2>
-        <p class="desc">Every government reform, {D.reforms.length} in all, grouped by the government type that supports it. A reform sets how the state works; a country holds a few at a time, and a
+        <p class="desc">Every government reform, {RV.length === D.reforms.length ? D.reforms.length : `${RV.length} of ${D.reforms.length}`} in all, grouped by the government type that supports it. A reform sets how the state works; a country holds a few at a time, and a
           major reform is exclusive: only one per country. The page shows what each does, who is offered it (any country, or only certain countries, cultures or religions), what it takes to
           adopt, and which reforms rule each other out. Pick one on the left or open it from the lists below.</p>
+        {@render scopeNote()}
         <div class="wline"><span class="flbl">Legend</span>
           {#each ['all', 'tag', 'culture', 'religion', 'region', 'government', 'unlock', 'other'] as t}<button class="wb t-{t}" class:on={kind === t} onclick={() => kind = kind === t ? '' : t}
             title={kind === t ? 'Show all again' : t === 'all' ? 'Only reforms open to everyone' : `Only reforms with a ${TYPE_LABEL[t].toLowerCase()} condition`}>{t === 'all' ? 'Everyone' : TYPE_LABEL[t]}</button>{/each}
@@ -349,13 +440,13 @@
           {#if cards}<div class="cardgrid">{#each g.list as r (r.id)}
             <a class="pcard" href="#e/{RP}{r.id}">
               <span class="art"><img src="icons/reforms/{r.id}.webp" alt="" loading="lazy">{#if r.who.length}<span class="dot t-{r.types[0] ?? 'other'}" title={r.whoText}></span>{/if}</span>
-              <b class="pn">{r.name}</b>
+              <b class="pn">{r.name}</b>{@render maybe(r)}
               <span class="pe">{#if r.major}Major · {/if}{r.age ? r.ageName + ' · ' : ''}{effLine(r)}</span>
             </a>
           {/each}</div>{:else}
           {#each g.list as r (r.id)}
             <a class="prow" href="#e/{RP}{r.id}">
-              <b class="pn">{r.name}{#if r.major} <span class="tag">Major</span>{/if}</b>
+              <b class="pn">{r.name}{#if r.major} <span class="tag">Major</span>{/if}{@render maybe(r)}</b>
               <span class="pe">{effLine(r)}</span>
               <span class="pb">{#if r.age}<span class="tag">{r.ageName}</span>{/if}{#each badges(r).slice(0, 3) as b}<span class="wb t-{b.type}" class:neg={b.not} title={b.title}>{b.label}</span>{/each}{#if r.who.length > 3}<span class="tag">+{r.who.length - 3}</span>{/if}</span>
             </a>
@@ -364,8 +455,9 @@
       {:else}<p class="meta">No reform matches the filters.</p>{/each}
     {:else}
       <div class="title"><div><h2>Estate privileges</h2>
-        <p class="desc">Every privilege you can grant an estate, {D.privileges.length} in all. Each trades the crown's power for estate favour; the page shows what it does, who is offered it
+        <p class="desc">Every privilege you can grant an estate, {PV.length === D.privileges.length ? D.privileges.length : `${PV.length} of ${D.privileges.length}`} in all. Each trades the crown's power for estate favour; the page shows what it does, who is offered it
           (everyone, or only certain countries, cultures, religions, regions or governments) and what it takes to grant or revoke. Pick one on the left or open it from the lists below.</p>
+        {@render scopeNote()}
         <div class="wline"><span class="flbl">Legend</span>
           {#each ['all', 'tag', 'culture', 'religion', 'region', 'government', 'unlock', 'other'] as t}<button class="wb t-{t}" class:on={kind === t} onclick={() => kind = kind === t ? '' : t}
             title={kind === t ? 'Show all again' : t === 'all' ? 'Only privileges open to everyone' : `Only privileges with a ${TYPE_LABEL[t].toLowerCase()} condition`}>{t === 'all' ? 'Everyone' : TYPE_LABEL[t]}</button>{/each}
@@ -377,13 +469,13 @@
           {#if cards}<div class="cardgrid">{#each g.list as p (p.id)}
             <a class="pcard" href="#e/{p.id}">
               <span class="art"><img src="icons/privileges/{p.id}.webp" alt="" loading="lazy">{#if p.who.length}<span class="dot t-{p.types[0] ?? 'other'}" title={p.whoText}></span>{/if}</span>
-              <b class="pn">{p.name}</b>
+              <b class="pn">{p.name}</b>{@render maybe(p)}
               <span class="pe">{effLine(p)}</span>
             </a>
           {/each}</div>{:else}
           {#each g.list as p (p.id)}
             <a class="prow" href="#e/{p.id}">
-              <b class="pn">{p.name}</b>
+              <b class="pn">{p.name}{@render maybe(p)}</b>
               <span class="pe">{effLine(p)}</span>
               <span class="pb">{#each badges(p).slice(0, 3) as b}<span class="wb t-{b.type}" class:neg={b.not} title={b.title}>{b.label}</span>{/each}{#if p.who.length > 3}<span class="tag">+{p.who.length - 3}</span>{/if}</span>
             </a>
@@ -404,6 +496,27 @@
   aside .blist h3 { display: flex; justify-content: space-between; }
   aside .blist .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mode { margin: 0 0 8px; }
+  /* viewing-as scope, 'conditional' hints and the facet search */
+  .snote { color: var(--dim); font-size: 13px; }
+  .snote .meta { margin: 0; }
+  p.snote { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; padding: 7px 12px; border: 1px solid var(--line); border-left: 3px solid #a39a84; border-radius: 4px; background: var(--panel2); }
+  p.snote.no { border-left-color: #c9694f; }
+  .mb { display: inline-block; margin-left: 6px; padding: 0 6px; font-size: 11px; font-weight: 400; letter-spacing: .4px; color: var(--dim); border: 1px dotted #6b5a33; border-radius: 8px; white-space: nowrap; cursor: help; vertical-align: 1px; }
+  .pcard .mb { margin: 0; }
+  aside .blist a.dim .pn { font-style: italic; color: var(--dim); }
+  .fsug { display: flex; flex-direction: column; margin: -2px 0 8px; border: 1px solid var(--frame); border-radius: 4px; background: #0d1117; overflow: hidden; }
+  .fsug button { display: flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer; font: inherit; font-size: 13px; color: var(--text); background: none; border: none; border-top: 1px solid var(--line); text-align: left; }
+  .fsug button:first-child { border-top: none; }
+  .fsug button:hover, .fsug button:focus-visible { background: var(--panel2); color: var(--gold); outline: none; }
+  .fsug .fn { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fw { font-size: 11px; letter-spacing: .8px; text-transform: uppercase; color: var(--dim); font-style: normal; }
+  .fc { text-align: right; white-space: nowrap; color: var(--gold); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .fpick { display: flex; align-items: center; gap: 8px; margin: 0 0 4px; }
+  .fpick .flbl { margin: 0; }
+  .chip.fsel { margin: 0; padding-left: 6px; border-color: var(--frame-hi); color: var(--gold); box-shadow: 0 0 6px #d8b46a33; cursor: default; }
+  .lnk { cursor: pointer; font: inherit; color: var(--gold); background: none; border: none; padding: 0; text-decoration: underline; }
+  .fx { cursor: pointer; margin-left: 2px; padding: 0 4px; font-size: 16px; line-height: 1; color: var(--dim); background: none; border: none; }
+  .fx:hover { color: var(--gold); }
   .cnt { color: var(--gold); font-size: 12px; }
   .dot { margin-left: auto; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
 

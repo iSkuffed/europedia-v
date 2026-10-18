@@ -6,6 +6,7 @@
   import Donut from './Donut.svelte';
   import type { Adv } from './Research.svelte';
   import { loadNations, loadUnique, loadStart, loadStartAdv, analyse, subjectsOf, UPPER, type NationData, type Unique, type StartData } from './lib/nations';
+  import { SCOPE, setScope } from './lib/scope.svelte';
   import { preloadCards, loadAdvances } from './lib/cards';
   preloadCards();
 
@@ -55,7 +56,11 @@
 
   // remember the nation so the tab opens on it next time
   $effect(() => { if (tag && N?.countries[tag]) localStorage.setItem('nation', tag); });
-  $effect(() => { if (!tag && N && localStorage.getItem('nation') && N.countries[localStorage.getItem('nation')!]) location.replace('#n/' + localStorage.getItem('nation')); });
+  // plain #n opens the nation you're viewing as, else the last one looked at
+  $effect(() => {
+    const t = SCOPE.tag && N?.countries[SCOPE.tag] ? SCOPE.tag : localStorage.getItem('nation');
+    if (!tag && N && t && N.countries[t]) location.replace('#n/' + t);
+  });
 
   const size = (t: string) => N!.countries[t].locs.length;
   const list = $derived(N ? Object.keys(N.countries).filter(t => !filter || N!.countries[t].name.toLowerCase().includes(filter.toLowerCase()) || t.toLowerCase() === filter.toLowerCase())
@@ -107,6 +112,15 @@
         {#key tag}<span class="bigflag" style="background:{swatch(tag)}"><img src="flags/{tag}.png" alt="" onerror={e => (e.currentTarget as HTMLElement).remove()}></span>{/key}
         <div><h2>{c.name}</h2>
           <div class="meta">{#if c.rank}<span>{c.rank}</span>{/if}{#if c.culture}<span>{c.culture}</span>{/if}{#if c.religion}<span>{c.religion}</span>{/if}<span>capital {locName(c.cap)}</span><span>{c.locs.length} locations</span></div>
+          <div class="scopebar" class:on={SCOPE.tag === tag}>
+            {#if SCOPE.tag === tag}
+              <span class="vstate" title="Every page shows only what {c.name} can have">Viewing the whole site as {c.name}</span>
+              <button onclick={() => setScope(null)} title="Show everything again">Global view</button>
+            {:else}
+              <button class="go" onclick={() => setScope(tag)} title="Hide what {c.name} can't build or get on every page">View as this nation</button>
+              {#if SCOPE.tag}<span class="vstate">now viewing as {SCOPE.name}</span>{/if}
+            {/if}
+          </div>
           {#if c.over}<p class="desc">{c.over[1]} of {@html nLink(c.over[0])}</p>{/if}
           {#if subs.length}<p class="desc">Subjects: {@html subs.map(nLink).join('')}
             <label class="tgl"><input type="checkbox" bind:checked={withSubjects}> count their land</label></p>{/if}
@@ -266,3 +280,14 @@
     {/if}
   </div>{/key}</main>
 </div>
+
+<style>
+  .scopebar { display: flex; align-items: center; gap: 10px; margin: 8px 0 2px; }
+  .scopebar button { cursor: pointer; font: inherit; font-size: 13px; color: var(--text); background: #0d1117; border: 1px solid var(--line); border-radius: 3px; padding: 3px 12px; }
+  .scopebar button:hover { border-color: var(--frame-hi); color: var(--gold); }
+  .scopebar .go { border-color: var(--frame); color: var(--gold); background: var(--panel2); }
+  .scopebar .go:hover { box-shadow: 0 0 6px #d8b46a55; }
+  .scopebar.on .vstate { color: var(--gold); }
+  .vstate { color: var(--dim); font-size: 13px; }
+  .scopebar.on { padding-left: 8px; border-left: 2px solid var(--frame-hi); }
+</style>

@@ -19,6 +19,8 @@
   import { AGE } from './lib/age.svelte';
   import { loadNations, type NationData } from './lib/nations';
   import { bChip, icon, ROMAN } from './lib/production';
+  import { fits, type Fit, type WhoItem } from './lib/fit';
+  import { SCOPE } from './lib/scope.svelte';
 
   let { id }: { id: string | null } = $props();
   let D = $state<AdvData>(), N = $state<NationData>();
@@ -67,6 +69,18 @@
   });
   const cmp = (a: Adv, b: Adv) => (X?.depth.get(a.id) ?? 0) - (X?.depth.get(b.id) ?? 0) || a.name.localeCompare(b.name);
 
+  // ---- "viewing as" a nation: advances it can't have are hidden everywhere; 'maybe' ones (unlocks, events...) stay, marked -------
+  const FIT = $derived.by(() => {  // empty in the Global view, so everything reads as 'yes'
+    const m = new Map<string, Fit>();
+    if (D && SCOPE.ctx) for (const a of D.advances) if (a.who) m.set(a.id, fits(a.who, SCOPE.ctx));
+    return m;
+  });
+  const fitOf = (a: Adv): Fit => FIT.get(a.id) ?? 'yes';
+  const vis = $derived(D ? D.advances.filter(a => fitOf(a) !== 'no') : []);  // what the page lists, counts and draws
+  const nHidden = $derived(D ? D.advances.length - vis.length : 0);
+  const nMaybe = $derived(vis.filter(a => fitOf(a) === 'maybe').length);
+  const COND = 'Conditional: part of what it needs (an unlock, event or reform) cannot be checked from the data, so it may still apply.';
+
   // ---- filters (sidebar) -------------------------------------------------------------------------------------------
   let q = $state(''), cat = $state('all'), foc = $state('all');
   const textOK = (a: Adv) => !q.trim() || q.toLowerCase().split(/\s+/).every(w => X!.hay.get(a.id)!.includes(w));
@@ -74,7 +88,7 @@
   const focOK = (a: Adv) => foc === 'all' || (foc === 'general' ? !a.focus : a.focus === foc);
   const catOK = (a: Adv, c = cat) => c === 'all' || (c === 'everyone' ? !a.who : !!a.uniq?.includes(c));
   // advances matching age + text + focus, whatever the availability filter says (those counts go on the filter buttons)
-  const base = $derived(D && X ? D.advances.filter(a => ageOK(a) && textOK(a) && focOK(a)) : []);
+  const base = $derived(D && X ? vis.filter(a => ageOK(a) && textOK(a) && focOK(a)) : []);
   const counts = $derived({all: base.length, everyone: base.filter(a => !a.who).length,
     ...Object.fromEntries(CATS.map(([c]) => [c, base.filter(a => a.uniq?.includes(c)).length]))} as Record<string, number>);
   const filtered = $derived(base.filter(a => catOK(a)));
@@ -134,9 +148,9 @@
   const ageLine = (n: number) => `Age ${ROMAN[n]}: ${D?.ages[n] ?? ''}`;
 
   const adv = $derived(id && X ? X.byId.get(id) ?? null : null);
-  const also = $derived(adv?.whoText && X ? (X.sameWho.get(adv.whoText) ?? []).filter(a => a.id !== adv.id).sort((a, b) => a.age - b.age || cmp(a, b)) : []);
+  const also = $derived(adv?.whoText && X ? (X.sameWho.get(adv.whoText) ?? []).filter(a => a.id !== adv.id && fitOf(a) !== 'no').sort((a, b) => a.age - b.age || cmp(a, b)) : []);
   const prereq = $derived(adv && X ? (adv.requires ?? []).map(r => X.byId.get(r) ?? r) : []);
-  const next = $derived(adv && X ? [...(X.leads.get(adv.id) ?? [])].sort((a, b) => a.age - b.age || cmp(a, b)) : []);
+  const next = $derived(adv && X ? [...(X.leads.get(adv.id) ?? [])].filter(a => fitOf(a) !== 'no').sort((a, b) => a.age - b.age || cmp(a, b)) : []);
 </script>
 
 {#snippet aicon(a: Adv, cls = 'aic')}{#if a.icon}<img class={cls} src="icons/advances/{a.icon}.png" alt="" loading="lazy">{:else}<span class={cls}></span>{/if}{/snippet}
@@ -146,6 +160,7 @@
   <a class="advrow" class:uniq={!!a.who} href="#r/{a.id}">
     {@render aicon(a)}
     <span class="an"><b>{a.name}</b>
+      {#if fitOf(a) === 'maybe'}<span class="cond" title={COND}>conditional</span>{/if}
       {#if a.who && !(skip && a.whoText?.endsWith(': ' + skip))}<span class="tag who" title={a.whoText}>{shorten(a.whoText ?? '')}</span>{/if}
       <span class="fxs">
         {#each e.m as [l, v], i}{i ? ' · ' : ''}{l} <b>{v}</b>{/each}{#if e.m.length && e.u.length} · {/if}{#if e.u.length}unlocks {e.u.map(u => u[2]).join(', ')}{/if}{#if e.more > 0}<i> +{e.more} more</i>{/if}
@@ -154,6 +169,8 @@
     </span>
   </a>
 {/snippet}
+
+{#snippet flag(t: string)}<span class="fl" style="background:{swatch(t)}"><img src="flags/{t}.png" alt="" onerror={e => e.currentTarget.remove()}></span>{/snippet}
 
 {#snippet clause(c: Clause)}
   {#if c.parts}
@@ -173,12 +190,15 @@
 
 {#snippet advchip(a: Adv | string)}
   {#if typeof a === 'string'}<span class="chip">{a}</span>
-  {:else}<a class="chip" href="#r/{a.id}">{@render aicon(a, 'ic')}{a.name}<span class="tag age">{ROMAN[a.age]}</span></a>{/if}
+  {:else}<a class="chip" class:gone={fitOf(a) === 'no'} href="#r/{a.id}">{@render aicon(a, 'ic')}{a.name}<span class="tag age">{ROMAN[a.age]}</span></a>{/if}
 {/snippet}
 
 <div class="layout">
   <aside>
     <h3>Research</h3>
+    {#if SCOPE.ctx && D}
+      <p class="meta scopenote">Viewing as {@render flag(SCOPE.ctx.tag)}<b>{SCOPE.name}</b>: {nHidden} of {D.advances.length} advances hidden{#if nMaybe}, {nMaybe} <span title={COND}>conditional</span>{/if}.</p>
+    {/if}
     <input class="nfilter" placeholder="Find an advance, effect, country…" bind:value={q} autocomplete="off">
     {#if D}
       <div class="flbl">Available to</div>
@@ -197,7 +217,7 @@
       <div class="blist">
         {#each listed.slice(0, LIMIT) as a (a.id)}
           <a href="#r/{a.id}" class:on={id === a.id}>{@render aicon(a, 'sic')}<span class="nm">{a.name}</span>
-            {#if a.who}<span class="dot" title={a.whoText}></span>{/if}<span class="tag up-tag">{ROMAN[a.age]}</span></a>
+            {#if a.who}<span class="dot" class:maybe={fitOf(a) === 'maybe'} title={a.whoText + (fitOf(a) === 'maybe' ? ' (conditional)' : '')}></span>{/if}<span class="tag up-tag">{ROMAN[a.age]}</span></a>
         {/each}
         {#if listed.length > LIMIT}<p class="meta">+{listed.length - LIMIT} more: narrow the filters.</p>{/if}
         {#if !listed.length}<p class="meta">Nothing matches.</p>{/if}
@@ -221,6 +241,10 @@
         </div>
         <a class="chip back" href="#r">All research</a>
       </div>
+      {#if SCOPE.ctx && fitOf(adv) !== 'yes'}
+        <p class="scopebanner" class:no={fitOf(adv) === 'no'}>{#if fitOf(adv) === 'no'}Not available to {@render flag(SCOPE.ctx.tag)}<b>{SCOPE.name}</b>: it is hidden from the lists while you view as them. See "Who can get it" below.
+          {:else}Conditional for {@render flag(SCOPE.ctx.tag)}<b>{SCOPE.name}</b>: {COND.replace('Conditional: ', '')}{/if}</p>
+      {/if}
 
       <div class="ncols">
         <div>
@@ -274,7 +298,7 @@
     {:else}
       <!-- ================= overview ================= -->
       <div class="title"><div><h2>Research</h2>
-        <p class="desc">Every advance in the game, {D.advances.length} of them, with what it gives, what it needs and who can get it. Each age has the same general tree for
+        <p class="desc">{#if SCOPE.ctx}The {vis.length} advances open to {SCOPE.name} (of {D.advances.length} in the game){:else}Every advance in the game, {D.advances.length} of them{/if}, with what it gives, what it needs and who can get it. Each age has the same general tree for
           everyone, plus advances tied to a country, culture, religion or region. From the Renaissance on, each age also opens with a <b>focus</b> choice: Administrative, Diplomatic or Military.
           A country that picks one gets that focus's 10 extra advances for the age.</p>
         <div class="meta"><span>{AGE.v ? ageLine(AGE.v) : 'all ages (pick one in the header)'}</span>
@@ -381,5 +405,15 @@
   .cl { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px; }
   .cl.not .tl { color: var(--in); }
   .tag.big { font-size: 13px; padding: 2px 8px; color: var(--text); }
+  .scopenote { margin: 0 0 8px; font-size: 12.5px; }
+  .scopenote b { color: var(--gold); font-weight: normal; }
+  .scopenote :global(.fl), .scopebanner :global(.fl) { margin-right: 4px; vertical-align: middle; }
+  .scopenote span[title] { text-decoration: underline dotted; text-underline-offset: 2px; cursor: help; }
+  .scopebanner { margin: 0 0 10px; padding: 6px 10px; font-size: 13px; color: var(--dim); border: 1px solid var(--line); border-left: 2px solid var(--frame-hi); background: var(--panel2); }
+  .scopebanner.no { color: var(--text); border-left-color: var(--in); }
+  .scopebanner b { color: var(--gold); font-weight: normal; }
+  .cond { margin-right: 6px; font-size: 11px; font-style: italic; color: var(--dim); }
+  .blist .dot.maybe { background: none; box-shadow: inset 0 0 0 1px var(--frame-hi); }
+  .chip.gone { opacity: .5; text-decoration: line-through; }
   .og { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 3px 4px; }
 </style>

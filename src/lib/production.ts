@@ -1,6 +1,7 @@
 // Production Chains page: goods / buildings views rendered as HTML strings into the page shell.
 import { DATA, type Recipe } from './data';
 import { AGE } from './age.svelte';
+import { SCOPE } from './scope.svelte';
 
 type Use = [bid: string, r: Recipe];  // a building running a recipe
 type Card = [body: string, heading: string, emptyText: string, cls?: string];  // cls 'big': gets a wider column
@@ -32,6 +33,20 @@ export const pName = (p: string) => PGROUP[p]?.[1] || P[p] || p;
 export const pIcon = (p: string) => PGROUP[p] ? `<img class="ic" src="icons/misc/${PGROUP[p][0]}.png" alt="${esc(pName(p))}">` : icon('pops', p, pName(p));
 const pChip = (p: string) => P[p] ? `<a class="chip" href="#p/${p}">${pIcon(p)}${esc(pName(p))}</a>` : `<span class="chip">${pIcon(p)}${esc(pName(p))}</span>`;
 
+// ---- scope ("viewing as" a nation): hide buildings the nation can't build --------
+// req = [kind, display name][]; names of one kind are alternatives, kinds all have to hold. Reforms and locations can be gained, so they never hide.
+const can = (bid: string) => {
+  const c = SCOPE.ctx;
+  if (!c) return true;
+  const n = (ids: (string | undefined)[] = []) => ids.filter(Boolean).map(i => SCOPE.names[i!] ?? i!);
+  const mine: Record<string, string[]> = {Nation: [SCOPE.name], Culture: n([c.c]), 'Culture group': n(c.cg), Religion: n([c.r]), 'Religion group': n([c.rg]), Government: n([c.gov]), Region: n(c.geo)};
+  const by: Record<string, string[]> = {};
+  for (const [k, v] of B[bid].req) (by[k] ??= []).push(v);
+  return Object.entries(by).every(([k, vs]) => !mine[k] || vs.some(v => mine[k].includes(v)));
+};
+const hiddenCount = () => SCOPE.ctx ? Object.keys(B).filter(b => !can(b)).length : 0;
+const scopeFlag = () => `<span class="fl"><img src="flags/${esc(SCOPE.tag)}.png" alt="" onerror="this.remove()"></span>`;
+
 // ---- indexes ---------------------------------------------------------------
 const producers: Record<string, Use[]> = {}, consumers: Record<string, Use[]> = {}, maint: Record<string, Use[]> = {}, demandUse: Record<string, string[]> = {};
 for (const [bid, b] of Object.entries(B)) for (const r of b.recipes) {
@@ -56,7 +71,7 @@ addEventListener('click', e => {
   if (d) { d.open = false; d.querySelector('summary')!.scrollIntoView({block: 'nearest'}); }
 });
 // who uses a goods_demand entry: buildings (construction), unit types, or other script objects (laws, orders…)
-const demandUsers = (d: string) => [...(buildBy[d] || []).map(bChip), ...(unitsBy[d] || []).map(uChip),
+const demandUsers = (d: string) => [...(buildBy[d] || []).filter(can).map(bChip), ...(unitsBy[d] || []).map(uChip),
   ...(DREF[d] || []).map(r => `<span class="chip"><span class="tag">${esc(r.f.replace(/_/g, ' '))}</span>${esc(r.name)}</span>`)];
 
 const DCAT: Record<string, string> = {
@@ -86,14 +101,14 @@ const availB = (bid: string, A: number) => B[bid].age <= A && !(obsoletedBy[bid]
 const okR = ([bid, r]: Use, A: number | null = AGE.v) => !A || (availB(bid, A) && (r.age || 1) <= A);
 const matchesVariant = (r: Recipe, v: string[]) => v.every(i => i in r.in);
 function prod(g: string, A?: number) {
-  let ps = (producers[g] || []).filter(p => okR(p, A));
+  let ps = (producers[g] || []).filter(p => okR(p, A) && can(p[0]));
   if (F.on && g === F.g && F.rec != null) { const v = variants(g)[F.rec]; ps = ps.filter(([, r]) => matchesVariant(r, v)); }
   return ps;
 }
-const cons = (g: string) => (consumers[g] || []).filter(p => okR(p));
+const cons = (g: string) => (consumers[g] || []).filter(p => okR(p) && can(p[0]));
 const minimalSets = (sets: string[][]) => sets.filter(s => !sets.some(o => o.length < s.length && o.every(i => s.includes(i))));
 const distinctSets = (list: Use[]) => [...new Map(list.map(([, r]) => Object.keys(r.in).sort()).filter(s => s.length).map(s => [s.join('+'), s])).values()];
-const variants = (g: string) => minimalSets(distinctSets(producers[g] || []));  // unfiltered, so the buttons stay stable
+const variants = (g: string) => minimalSets(distinctSets((producers[g] || []).filter(p => can(p[0]))));  // not age-filtered, so the buttons stay stable
 
 // recipe options for a good: distinct input sets, reduced to the minimal ones (alternatives);
 // inputs only found in non-minimal sets are reported separately as "extra"
@@ -363,7 +378,7 @@ function ageNote(g: string) {
 
 function goodView(g: string) {
   const x = G[g];
-  const ps = prod(g), cs = cons(g), ms = (maint[g] || []).filter(p => okR(p)), ds = demandUse[g] || [];
+  const ps = prod(g), cs = cons(g), ms = (maint[g] || []).filter(p => okR(p) && can(p[0])), ds = demandUse[g] || [];
   const meta = [x.cat === 'raw_material' ? `Raw material — ${method(x.method)}` : 'Produced good',
     `Base price ${fmt(x.price)}`, x.slave ? 'Slave good' : ''].filter(Boolean);
 
@@ -378,7 +393,7 @@ function goodView(g: string) {
 
   const demCard = (filter: (d: string) => boolean) => {
     const byCat: Record<string, string[]> = {};
-    for (const d of ds.filter(filter)) (byCat[D[d].cat] ??= []).push(d);
+    for (const d of ds.filter(filter).filter(d => demandUsers(d).length || !buildBy[d]?.length)) (byCat[D[d].cat] ??= []).push(d);
     return Object.entries(byCat).map(([c, list]) => `<details ${list.length < 8 ? 'open' : ''}><summary>${esc(DCAT[c] || c)} (${list.length})</summary>
       ${list.map(d => {
         const who = demandUsers(d);
@@ -412,13 +427,14 @@ function buildingView(bid: string) {
   const later = AGE.v && !availB(bid, AGE.v) ? (b.age > AGE.v ? `Unlocks in Age ${ROMAN[b.age]} (${esc(DATA.ages[b.age])}).`
     : `Replaced by ${(obsoletedBy[bid] || []).filter(o => B[o].age <= AGE.v!).map(o => esc(B[o].name)).join(', ')} by Age ${ROMAN[AGE.v]}.`) : '';
   const restrict = (later ? `<div class="cnote">${later}</div>` : '') + reqLines(b).map(([k, v]) => `<div class="cnote"><span class="tag">${esc(k)}</span>${esc(v)} only</div>`).join('')
-    + (b.event ? `<div class="cnote">${EVENT_NOTE}</div>` : '');
+    + (b.event ? `<div class="cnote">${EVENT_NOTE}</div>` : '')
+    + (can(bid) ? '' : `<div class="cnote">${scopeFlag()} Not available to ${esc(SCOPE.name)}: it needs ${reqLines(b).map(([k, v]) => `${esc(k)} ${esc(v)}`).join(', ')}.</div>`);
   const cost = buildCost(b), build = cost ? Object.entries(cost.in).map(([g, n]) => gChip(g, n)).join('') : '';
   return `<div class="title lg">${icon('buildings', bid, b.name)}<div><h2>${esc(b.name)}</h2><div class="meta">${meta.map(m => `<span>${esc(m)}</span>`).join('')}</div>${restrict}</div></div>
   ${cards([
     [recipeGroups(prod.map(r => [bid, r])), '<h4 class="out">Production methods</h4>', 'Produces no goods.'],
     [outs.map(o => {
-      const cs = [...new Set((consumers[o] || []).map(([k]) => k))];
+      const cs = [...new Set((consumers[o] || []).map(([k]) => k))].filter(can);
       const pd = Object.keys(G[o].demand);
       const us = [...new Set((demandUse[o] || []).flatMap(d => unitsBy[d] || []))];
       const other = (demandUse[o] || []).filter(d => !unitsBy[d]).length;
@@ -438,6 +454,7 @@ function buildingView(bid: string) {
 function overview() {
   return `<div class="overview"><h2>Production Chains</h2>
   <p class="meta">Pick a good or building on the left, or search. Every icon is clickable. Data extracted from the installed game files.</p>
+  ${SCOPE.ctx ? `<p class="meta">Viewing as ${scopeFlag()} ${esc(SCOPE.name)} · ${hiddenCount()} building${hiddenCount() === 1 ? '' : 's'} hidden</p>` : ''}
   <section class="card"><h4 class="gold">How to read it</h4>
   <div class="rec">${gChip('wool', 1)}<span class="arrow">→</span>${bChip('cloth_guild')}<span class="arrow">→</span>${gChip('cloth', 1)}</div>
   <p class="meta">Inputs (amount per building level) → building → output. Raw materials come from location RGOs; produced goods come from buildings.</p></section></div>`;
@@ -456,7 +473,7 @@ function sidebar() {
   h += order.filter(k => grp[k]).map(k => `<h3>${k}</h3><div class="grid">${grp[k].sort(k === 'Food' ? (a, b) => G[b].food! - G[a].food! : (a, b) => G[a].name.localeCompare(G[b].name))
     .map(g => `<a href="#g/${g}" data-k="g/${g}" title="${esc(G[g].name)}${k === 'Food' ? ` — ${fmt(G[g].food)} food` : ''}">${icon('goods', g, G[g].name)}${k === 'Food' ? `<span class="pct food">${fmt(G[g].food)}</span>` : ''}</a>`).join('')}</div>`).join('');
   const bg: Record<string, string[]> = {};
-  for (const [bid, b] of Object.entries(B)) if (b.recipes.some(r => r.out)) (bg[CATS[b.cat] || b.cat] ??= []).push(bid);
+  for (const [bid, b] of Object.entries(B)) if (b.recipes.some(r => r.out) && can(bid)) (bg[CATS[b.cat] || b.cat] ??= []).push(bid);
   h += `<h3>Producing buildings</h3>` + Object.keys(bg).sort().map(c => `<details><summary>${esc(c)} (${bg[c].length})</summary><div class="blist sm">${bg[c].sort((a, b) => B[a].name.localeCompare(B[b].name))
     .map(b => `<a href="#b/${b}" data-k="b/${b}">${icon('buildings', b, B[b].name)}${esc(B[b].name)}</a>`).join('')}</div></details>`).join('');
   return h;
@@ -516,12 +533,14 @@ export function mountProduction(side: HTMLElement, main: HTMLElement) {
   const onResize = () => { clearTimeout(resizeT); resizeT = setTimeout(() => layoutMasonry(main), 100); };
   const onHash = () => route(side, main);
   const onAge = () => { keepScroll = true; route(side, main); };
+  const onScope = () => { side.innerHTML = sidebar(); onAge(); };
   main.addEventListener('click', onClick);
   addEventListener('resize', onResize);
   addEventListener('hashchange', onHash);
   addEventListener('agechange', onAge);
+  addEventListener('scopechange', onScope);
   route(side, main);
-  return () => { main.removeEventListener('click', onClick); removeEventListener('resize', onResize); removeEventListener('hashchange', onHash); removeEventListener('agechange', onAge); };
+  return () => { main.removeEventListener('click', onClick); removeEventListener('resize', onResize); removeEventListener('hashchange', onHash); removeEventListener('agechange', onAge); removeEventListener('scopechange', onScope); };
 }
 
 // ---- search ----------------------------------------------------------------
