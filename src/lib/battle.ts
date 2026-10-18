@@ -8,14 +8,17 @@ export const APPROX: string[] = [
   'Levy efficiency is min(1, 0.75 x (1 + levy combat efficiency)): levies hitting regulars deal x that, regulars hitting levies deal / that.',
   'Combined arms: bonus per type x (categories with 10%+ of regiments - 1), none if one category has 50%+. Auxiliaries do not count.',
   'Unit terrain modifiers (topography, vegetation, river) multiply. The river one applies to both sides when the river box is ticked.',
-  'Formation numbers are read as ratios. The strongest regiments deploy first; past 125% of a section\'s frontage they wait in reserve.',
-  'Reserves move up with chance combat speed x (1 + modifier) x 0.1 a day, to their formation section first.',
-  'Bombard: each artillery regiment fires with chance 0.2 + bombard efficiency a day at a random enemy in its section, with the normal damage formula. Nobody engages during it.',
-  'Army initiative multiplies unit initiative. The days-in-combat bonus to engaging never resets.',
+  'Formation numbers are read as ratios. The strongest regiments deploy first; past 125% of a section\'s frontage they wait in reserve. Your left faces their right.',
+  'Regiments past 100% of a section\'s frontage stay in the line unengaged; if hit, they take the not-engaged bonus (x1.1 men, x1.2 morale).',
+  'Reserves move up with chance combat speed x (1 + modifier) x 0.1 a day, to their formation section first, else wherever there is room.',
+  'A side whose line is empty fights on while it has reserves (not auxiliaries) that can still move up; it is beaten only when none are left.',
+  'Bombard: 3 days, only if artillery starts in the line. Each piece fires with chance 0.2 + bombard efficiency a day at a random enemy in its section, with the normal damage formula; targets are unengaged, so the x1.1 / x1.2 bonus applies. Nobody engages during it.',
+  'Army initiative multiplies unit initiative. The days-in-combat bonus to engaging counts from day 1 (bombard days included) and never resets.',
   'Morale = (base + flat) x (1 + morale modifiers + army tradition x 0.002).',
+  'A side outnumbered 10:1 (fighting men, auxiliaries excluded) is wiped on day 1.',
   'A regiment breaks at 0 morale. A beaten side whose morale is at or under 5% and who is outnumbered 2:1 is wiped; otherwise its survivors lose 10% retreating.',
   'Dice are clamped to 0..COMBAT_MAX. Cavalry damage taken (0.3) is applied literally to men and morale.',
-  'Not modelled: morale vs base morale scaling, forts, pursuit, morale recovery, experience gain, late joiners.',
+  'Not modelled: morale vs base morale scaling, forts, pursuit, morale recovery (land_morale_recovery), experience gain, late joiners (correct_box_chance).',
 ];
 
 const RESERVE = 3, MAX_DAYS = 365;
@@ -29,8 +32,8 @@ const FORMATIONS: Record<SideInput['formation'], Partial<Record<Cat, number>>[]>
 };
 
 interface Reg {
-  u: Unit; levy: boolean; art: boolean;
-  sec0: number; sec: number; pref: number;    // 0 left, 1 center, 2 right, 3 reserve; section s faces enemy section s
+  u: Unit; levy: boolean; art: boolean; aux: boolean;
+  sec0: number; sec: number; pref: number;    // battlefield position 0..2, 3 reserve; position p faces enemy position p (att left = def right)
   max: number; men: number; maxMorale: number; morale: number;
   engaged: boolean; broken: boolean; target: Reg | null; dMen: number; dMor: number;
   // per-battle constants
@@ -40,7 +43,7 @@ interface Reg {
 }
 
 interface Side {
-  regs: Reg[]; frontage: number; diceMod: number; levyF: number; tactics: number; discipline: number; levyDiscipline: number; combined: number;
+  regs: Reg[]; mirror: boolean; frontage: number; diceMod: number; levyF: number; tactics: number; discipline: number; levyDiscipline: number; combined: number;
   dice: number; used: number[]; front: Reg[][]; eng: Reg[][]; adj: number[];
 }
 
@@ -80,16 +83,34 @@ function commanderMods(data: UnitsData, s: SideInput): Record<string, number> {
   return m;
 }
 
+const num = (x: unknown, d = 0): number => typeof x === 'number' && Number.isFinite(x) ? x : d;
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+
+// Non-finite numbers fall back to 0 (tactics to the base value); abilities, experience and tradition are clamped to 0..100.
+function clean(s: SideInput, baseTactics: number): SideInput {
+  const g = s.general;
+  const catPower: SideInput['catPower'] = {};
+  for (const k in s.catPower ?? {}) catPower[k as Cat] = num(s.catPower[k as Cat]);
+  return {
+    ...s, catPower,
+    regs: (s.regs ?? []).map(r => ({ unit: r.unit, n: Math.min(500, Math.max(0, Math.floor(num(r.n)))) })),  // ponytail: 500 per row keeps a typo from freezing the page; real stacks are far smaller
+    general: g ? { adm: clamp(num(g.adm), 0, 100), dip: clamp(num(g.dip), 0, 100), mil: clamp(num(g.mil), 0, 100), traits: g.traits ?? [] } : null,
+    discipline: num(s.discipline), tactics: num(s.tactics, baseTactics), moraleFlat: num(s.moraleFlat), moraleMod: num(s.moraleMod),
+    experience: clamp(num(s.experience), 0, 100), levyEff: num(s.levyEff), initiativeMod: num(s.initiativeMod), speedMod: num(s.speedMod),
+    frontageMod: num(s.frontageMod), combinedPerType: num(s.combinedPerType), armyTradition: clamp(num(s.armyTradition), 0, 100),
+  };
+}
+
 function buildSide(data: UnitsData, input: BattleInput, who: 'att' | 'def', K: Record<string, number>): Side {
-  const s = input[who];
+  const s = clean(input[who], data.base.military_tactics ?? 1);
   const m = commanderMods(data, s);
   const units = new Map(data.units.map(u => [u.id, u]));
   const topo = find(data.topography, input.topography, 'topography'), veg = find(data.vegetation, input.vegetation, 'vegetation');
   const rank = find(data.ranks, input.rank, 'rank');
-  const frontage = Math.max(K.MIN_FRONTAGE_AFTER_TERRAIN, data.baseFrontage + rank.front + topo.front + veg.front)
-    * (1 + s.frontageMod + (m.possible_frontage_modifier ?? 0));
+  const frontage = Math.max(K.MIN_FRONTAGE_AFTER_TERRAIN, Math.max(K.MIN_FRONTAGE_AFTER_TERRAIN, data.baseFrontage + rank.front + topo.front + veg.front)
+    * (1 + s.frontageMod + (m.possible_frontage_modifier ?? 0)));
   const tactics = s.tactics + (m.military_tactics ?? 0);
-  const levyF = Math.min(1, K.LAND_LEVY_COMBAT_IMPACT * (1 + s.levyEff + (m.levy_combat_efficiency_modifier ?? 0)));  // additive form GUESS
+  const levyF = clamp(K.LAND_LEVY_COMBAT_IMPACT * (1 + s.levyEff + (m.levy_combat_efficiency_modifier ?? 0)), 0.05, 1);  // additive form GUESS
   let diceMod = m.commander_combat_bonus ?? 0;
   if (who === 'att') {
     diceMod -= topo.dice + veg.dice;
@@ -113,20 +134,20 @@ function buildSide(data: UnitsData, input: BattleInput, who: 'att' | 'def', K: R
     : (s.combinedPerType + (m.combined_bonus_per_type ?? 0)) * Math.max(0, shares.filter(x => x >= minP).length - 1);
 
   const disc = (levy: boolean) => s.discipline + (m.discipline ?? 0) + ((levy ? data.levyMods : data.regularMods).discipline ?? 0);
-  const expMul = 1 - K.LAND_EXPERIENCE_DAMAGE_REDUCTION * Math.min(100, Math.max(0, s.experience)) / 100;
+  const expMul = 1 - K.LAND_EXPERIENCE_DAMAGE_REDUCTION * s.experience / 100;
   const tc = (u: Unit) => (1 + (u.terrain[input.topography] ?? 0)) * (1 + (u.terrain[input.vegetation] ?? 0)) * (1 + (input.river ? u.terrain.river ?? 0 : 0));
   const regs: Reg[] = list.map(u => {
     const cls = u.levy ? data.levyMods : data.regularMods;
     const g = (k: string) => (m[k] ?? 0) + (cls[k] ?? 0);
-    const d = disc(u.levy);
-    const off = u.cp * (1 + (s.catPower[u.cat] ?? 0) + g(`army_${u.cat}_power`)) * (1 + d) * tc(u) * (1 + (u.combinedArms ? combined : 0)) * K.COMBAT_DAMAGE_MULT;
-    const def = expMul * u.taken / (1 + d);
-    const maxMorale = (K.LAND_MORALE + s.moraleFlat + g('land_morale'))
-      * (1 + s.moraleMod + s.armyTradition * 0.002 + g('land_morale_modifier'));  // 0.002/pt: +20% at 100 tradition (SPEC 1.9)
+    const d = Math.max(0.05, 1 + disc(u.levy));
+    const off = u.cp * (1 + (s.catPower[u.cat] ?? 0) + g(`army_${u.cat}_power`)) * d * tc(u) * (1 + (u.combinedArms ? combined : 0)) * K.COMBAT_DAMAGE_MULT;
+    const def = expMul * u.taken / d;
+    const maxMorale = Math.max(0, (K.LAND_MORALE + s.moraleFlat + g('land_morale'))
+      * (1 + s.moraleMod + s.armyTradition * 0.002 + g('land_morale_modifier')));  // 0.002/pt: +20% at 100 tradition (SPEC 1.9)
     const initEff = u.init * (1 + s.initiativeMod + g('army_initiative'));
     const max = u.str * 1000;
     return {
-      u, levy: u.levy, art: u.cat === 'artillery', sec0: RESERVE, sec: RESERVE, pref: -1,
+      u, levy: u.levy, art: u.cat === 'artillery', aux: u.cat === 'auxiliary' || !u.combinedArms, sec0: RESERVE, sec: RESERVE, pref: -1,
       max, men: max, maxMorale, morale: maxMorale, engaged: false, broken: false, target: null, dMen: 0, dMor: 0,
       offStr: off * K.LAND_STRENGTH_DAMAGE_MODIFIER * (1 + u.sdd),
       offMor: off * K.LAND_MORALE_DAMAGE_MODIFIER * K.BASE_MORALE_DAMAGE * (1 + u.mdd) / max,
@@ -139,11 +160,12 @@ function buildSide(data: UnitsData, input: BattleInput, who: 'att' | 'def', K: R
   });
   // deployment: strongest first (GUESS); each regiment goes where its category is least represented relative to the preset's ratio
   regs.sort((a, b) => b.u.cp * b.u.str - a.u.cp * a.u.str);
-  const pre = FORMATIONS[s.formation] ?? FORMATIONS.balanced_army, cap = frontage * K.MAX_FRONTAGE_OVERSTACKING;
+  const mirror = who === 'def', f = FORMATIONS[s.formation] ?? FORMATIONS.balanced_army, cap = frontage * K.MAX_FRONTAGE_OVERSTACKING;
+  const pre = mirror ? [f[2], f[1], f[0]] : f, order = mirror ? [1, 2, 0] : [1, 0, 2];  // ties: center, then own left
   const used = [0, 0, 0], count = [{} as Record<string, number>, {}, {}];
   for (const r of regs) {
     let pref = -1, best = -1, ps = Infinity, bs = Infinity;
-    for (const p of [1, 0, 2]) {
+    for (const p of order) {
       const w = pre[p][r.u.cat];
       if (!w) continue;
       const score = (count[p][r.u.cat] ?? 0) / w;
@@ -154,7 +176,7 @@ function buildSide(data: UnitsData, input: BattleInput, who: 'att' | 'def', K: R
     if (best >= 0) { r.sec0 = best; used[best] += r.front; count[best][r.u.cat] = (count[best][r.u.cat] ?? 0) + 1; }
   }
   return {
-    regs, frontage, diceMod, levyF, tactics, discipline: disc(false), levyDiscipline: disc(true), combined,
+    regs, mirror, frontage, diceMod, levyF, tactics, discipline: disc(false), levyDiscipline: disc(true), combined,
     dice: 0, used: [0, 0, 0], front: [[], [], []], eng: [[], [], []], adj: [0, 0, 0],
   };
 }
@@ -173,8 +195,8 @@ function prepare(data: UnitsData, input: BattleInput): Prep {
     for (const r of s[i].regs) { r.offStr *= t; r.offMor *= t; }
   }
   return {
-    s, K, hasArt: s.some(x => x.regs.some(r => r.art)), random: input.dice !== 'fixed',
-    fixed: [input.fixed?.att ?? 5, input.fixed?.def ?? 5],
+    s, K, hasArt: s.some(x => x.regs.some(r => r.art && r.sec0 !== RESERVE)), random: input.dice !== 'fixed',
+    fixed: [Math.floor(num(input.fixed?.att, 5)), Math.floor(num(input.fixed?.def, 5))],
   };
 }
 
@@ -190,6 +212,8 @@ function state(S: Side): SideState {
 }
 
 const hasFront = (S: Side) => S.regs.some(r => !r.broken && r.sec !== RESERVE);
+// reserves that can still refill the line: not broken, not auxiliary, able to move
+const hasReserve = (S: Side) => S.regs.some(r => !r.broken && r.sec === RESERVE && !r.aux && r.moveP > 0);
 
 function engage(S: Side, day: number, K: Record<string, number>, rng: () => number) {
   const u = S.used;
@@ -283,6 +307,7 @@ function settle(S: Side, K: Record<string, number>) {
 
 const totalMen = (S: Side) => S.regs.reduce((t, r) => t + r.men, 0);
 const fightingMen = (S: Side) => S.regs.reduce((t, r) => t + (r.broken ? 0 : r.men), 0);
+const combatMen = (S: Side) => S.regs.reduce((t, r) => t + (r.aux ? 0 : r.men), 0);  // auxiliaries excluded
 const NAME = ['Attacker', 'Defender'];
 
 function run(P: Prep, seed: number, record: boolean): BattleLog {
@@ -296,12 +321,13 @@ function run(P: Prep, seed: number, record: boolean): BattleLog {
     winner, days, start, daily, notes,
     losses: { att: Math.round(men0[0] - totalMen(A)), def: Math.round(men0[1] - totalMen(B)) },
   });
-  if (!men0[0] && !men0[1]) return finish('draw', 0);
+  const fight0 = [combatMen(A), combatMen(B)];
+  if (!fight0[0] && !fight0[1]) { notes.push('Neither side has fighting regiments'); return finish('draw', 0); }
 
-  // initial overrun: a strength ratio of INITIAL_OVERRUN_FACTOR or more wipes the smaller side on the first day
+  // initial overrun: a fighting-men ratio of INITIAL_OVERRUN_FACTOR or more wipes the smaller side on the first day
   for (let i = 0; i < 2; i++) {
-    if (men0[i] >= K.INITIAL_OVERRUN_FACTOR * men0[1 - i]) {
-      const ratio = men0[1 - i] ? `${Math.round(men0[i] / men0[1 - i])}:1` : 'no opposition';
+    if (fight0[i] >= K.INITIAL_OVERRUN_FACTOR * fight0[1 - i]) {
+      const ratio = fight0[1 - i] ? `${Math.round(fight0[i] / fight0[1 - i])}:1` : 'no fighting regiments';
       for (const r of P.s[1 - i].regs) { r.men = 0; r.broken = true; }
       notes.push(`${NAME[1 - i]} overrun on day 1 (${ratio})`);
       if (record) daily.push({ att: state(A), def: state(B), diceAtt: 0, diceDef: 0 });
@@ -329,13 +355,17 @@ function run(P: Prep, seed: number, record: boolean): BattleLog {
     settle(A, K); settle(B, K);
     if (record) daily.push({ att: state(A), def: state(B), diceAtt: A.dice, diceDef: B.dice });
     if (day < K.MINIMUM_COMBAT_DAYS) continue;
-    // a side with an empty front gets one more reserve roll to refill it, else it is beaten
-    const out = P.s.map(S => { if (hasFront(S)) return false; reserves(S, rng); return !hasFront(S); });
+    // a side is beaten when its line is empty and no reserve can refill it; otherwise reserves keep rolling daily
+    const out = P.s.map(S => !hasFront(S) && !hasReserve(S));
     if (!out[0] && !out[1]) continue;
-    if (out[0] && out[1]) { notes.push(`Both sides broke on day ${day}`); return finish('draw', day); }
+    if (out[0] && out[1]) {
+      const why = (S: Side) => S.regs.some(r => !r.broken) ? 'only auxiliaries or immobile reserves left' : 'every regiment broken';
+      notes.push(`Both sides out of the fight on day ${day} (attacker: ${why(A)}; defender: ${why(B)})`);
+      return finish('draw', day);
+    }
     const w = out[0] ? 1 : 0, L = P.s[1 - w];
     let mor = 0, men = 0;
-    for (const r of L.regs) { men += r.men; mor += r.men * Math.max(0, r.morale) / r.maxMorale; }
+    for (const r of L.regs) { men += r.men; if (r.maxMorale > 0) mor += r.men * Math.max(0, r.morale) / r.maxMorale; }
     const collapsed = !men || mor / men <= K.MORALE_COLLAPSE_THRESHOLD, wm = fightingMen(P.s[w]);
     if (collapsed && wm >= K.MORALE_OVERRUN_FACTOR * men) {
       for (const r of L.regs) r.men = 0;
@@ -350,15 +380,15 @@ function run(P: Prep, seed: number, record: boolean): BattleLog {
   return finish('draw', MAX_DAYS);
 }
 
-const randomSeed = () => (Math.random() * 4294967296) >>> 0;
+const seedOf = (input: BattleInput) => Number.isFinite(input.seed) ? (input.seed as number) >>> 0 : (Math.random() * 4294967296) >>> 0;
 
 export function simulateOnce(data: UnitsData, input: BattleInput): BattleLog {
-  return run(prepare(data, input), input.seed ?? randomSeed(), true);
+  return run(prepare(data, input), seedOf(input), true);
 }
 
 export function simulate(data: UnitsData, input: BattleInput, n: number): Summary {
-  const P = prepare(data, input), base = input.seed ?? randomSeed();
-  n = Math.max(1, Math.floor(n));
+  const P = prepare(data, input), base = seedOf(input);
+  n = Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
   const seeds: number[] = [], days: number[] = [], la: number[] = [], ld: number[] = [];
   let att = 0, def = 0;
   for (let i = 0; i < n; i++) {
@@ -388,9 +418,10 @@ export interface SideStats {
   sections: { left: number; center: number; right: number };  // regiments deployed per section
 }
 
+// Pre-battle readout. Bad numbers are sanitised like in a battle; unknown unit / terrain / rank / trait ids throw (the UI catches).
 export function sideStats(data: UnitsData, input: BattleInput, who: 'att' | 'def'): SideStats {
   const S = prepare(data, input).s[who === 'att' ? 0 : 1], regs = S.regs;
-  const at = (p: number) => regs.filter(r => r.sec0 === p).length;
+  const at = (p: number) => regs.filter(r => r.sec0 === (S.mirror && p !== RESERVE ? 2 - p : p)).length;  // in the side's own left/right
   return {
     men: regs.reduce((t, r) => t + r.max, 0), regiments: regs.length, front: regs.length - at(RESERVE), reserve: at(RESERVE),
     frontage: S.frontage, maxMorale: regs.length ? regs.reduce((t, r) => t + r.maxMorale, 0) / regs.length : 0,

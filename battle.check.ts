@@ -33,8 +33,9 @@ const fixture: UnitsData = {
     LAND_MORALE_DAMAGE_MODIFIER: 0.25, NOT_ENGAGED_STRENGTH_DAMAGE_MODIFIER: 1.1, NOT_ENGAGED_MORALE_DAMAGE_MODIFIER: 1.2,
     INITIAL_OVERRUN_FACTOR: 10, MORALE_OVERRUN_FACTOR: 2, BASE_MORALE_DAMAGE: 1, EXPERIENCE_GAIN: 30, LAND_MORALE: 3, MIN_FRONTAGE_AFTER_TERRAIN: 2,
   },
-  traits: [{ id: 'strategist', name: 'Strategist', mods: { discipline: 0.1, commander_combat_bonus: 2 } }],
-  ageMods: {},
+  traits: [{ id: 'strategist', name: 'Strategist', mods: { discipline: 0.1, commander_combat_bonus: 2 } },
+    { id: 'offensive_planner', name: 'Offensive Planner', mods: { commander_combat_bonus: 1 } }],
+  ageMods: {}, focusMods: { adm: {}, dip: {}, mil: {} },
   general: {
     adm: { possible_frontage_modifier: 0.001, correct_box_chance: 0.001 },
     dip: { land_morale_modifier: 0.002, army_initiative: 0.01 },
@@ -100,6 +101,57 @@ function checks(d: UnitsData, U: { inf: string; levy: string; hc: string; lc: st
       assert.equal(log.daily.length, log.days);
     }
   }
+
+  // draw rate of a symmetric battle
+  console.log(`  10v10 draw rate: ${(sym.draw * 100).toFixed(2)}%`);
+  assert.ok(sym.draw < 0.05, `draw rate ${sym.draw}`);
+
+  // monotonicity: each change moves the attacker's win rate the expected way (same seeds, so noise mostly cancels)
+  const N = 800, base = battle(F(10), F(10), { seed: 11 }), w0 = simulate(d, base, N).attWin;
+  const A = (o: Partial<SideInput>) => ({ ...base, att: { ...base.att, ...o } }), Dd = (o: Partial<SideInput>) => ({ ...base, def: { ...base.def, ...o } });
+  const half = side([[U.inf, 5], [U.levy, 5]]), lb = battle(half, half, { seed: 11 }), lw0 = simulate(d, lb, N).attWin;
+  const mono: [string, BattleInput, 1 | -1, number?][] = [
+    ['discipline +0.1', A({ discipline: 0.1 }), 1], ['discipline -0.1', A({ discipline: -0.1 }), -1],
+    ['tactics +0.5', A({ tactics: 1.5 }), 1], ['tactics -0.5', A({ tactics: 0.5 }), -1],
+    ['experience +50', A({ experience: 50 }), 1], ['def experience +50', Dd({ experience: 50 }), -1],
+    ['heavy infantry power +0.2', A({ catPower: { heavy_infantry: 0.2 } }), 1], ['def heavy infantry power +0.2', Dd({ catPower: { heavy_infantry: 0.2 } }), -1],
+    ['morale modifier +0.2', A({ moraleMod: 0.2 }), 1], ['morale modifier -0.2', A({ moraleMod: -0.2 }), -1],
+    ['flat morale +0.5', A({ moraleFlat: 0.5 }), 1],
+    ['levy efficiency +0.3 (half-levy armies)', { ...lb, att: { ...lb.att, levyEff: 0.3 } }, 1, lw0],
+    ['general mil 100', A({ general: { adm: 0, dip: 0, mil: 100, traits: [] } }), 1],
+    ['general dip 100', A({ general: { adm: 0, dip: 100, mil: 0, traits: [] } }), 1],
+    ['+1 combat bonus trait', A({ general: { adm: 0, dip: 0, mil: 0, traits: ['offensive_planner'] } }), 1],
+    ['def +1 combat bonus trait', Dd({ general: { adm: 0, dip: 0, mil: 0, traits: ['offensive_planner'] } }), -1],
+    ...d.topography.filter(t => t.dice > 0).map(t => [`attack into ${t.id}`, { ...base, topography: t.id }, -1] as [string, BattleInput, -1]),
+    ...d.vegetation.filter(t => t.dice > 0).map(t => [`attack into ${t.id}`, { ...base, vegetation: t.id }, -1] as [string, BattleInput, -1]),
+    ['river crossing', { ...base, river: true }, -1], ['strait crossing', { ...base, strait: true }, -1], ['sea landing', { ...base, landing: true }, -1],
+    ['fixed dice 9 v 0', { ...base, dice: 'fixed', fixed: { att: 9, def: 0 } }, 1], ['fixed dice 0 v 9', { ...base, dice: 'fixed', fixed: { att: 0, def: 9 } }, -1],
+  ];
+  const deltas: string[] = [];
+  for (const [label, b, sign, ref = w0] of mono) {
+    const dw = simulate(d, b, N).attWin - ref;
+    deltas.push(`${label} ${dw >= 0 ? '+' : ''}${(dw * 100).toFixed(0)}`);
+    assert.ok(dw * sign > 0, `${label}: attWin moved ${dw} (expected sign ${sign})`);
+  }
+  console.log(`  monotonicity (attWin pts vs ${pct(w0)}): ${deltas.join(', ')}`);
+
+  // auxiliaries do not count toward a day-1 overrun; a side with only auxiliaries is overrun by real troops
+  const aux = simulateOnce(d, battle(side([[U.aux, 200]]), F(1)));
+  assert.equal(aux.winner, 'def'); assert.equal(aux.days, 1);
+  assert.equal(simulateOnce(d, battle(side([[U.aux, 5]]), side([[U.aux, 5]]))).winner, 'draw');
+
+  // an empty line with fresh reserves fights on: the loser never has non-broken infantry reserves left (narrow mountain front)
+  for (let seed = 1; seed <= 200; seed++) {
+    const log = simulateOnce(d, battle(F(25), F(20), { seed, topography: 'mountains', vegetation: 'forest' }));
+    const last = log.daily[log.daily.length - 1], loser = log.winner === 'att' ? last.def : log.winner === 'def' ? last.att : null;
+    if (loser) assert.ok(loser.front === 0 && loser.reserve === 0, `seed ${seed}: loser had ${loser.reserve} reserves`);
+  }
+
+  // guards: junk numbers and n stay finite / bounded
+  assert.equal(simulate(d, b0, NaN).n, 1); assert.equal(simulate(d, b0, -5).n, 1);
+  const junk = simulateOnce(d, battle(side([[U.inf, 10]], { discipline: NaN, tactics: Infinity, moraleMod: -5, frontageMod: -3, levyEff: -9, armyTradition: 1e9 }), F(10)));
+  assert.ok(Number.isFinite(junk.losses.att) && Number.isFinite(junk.losses.def) && junk.days <= 365, JSON.stringify(junk.losses));
+  assert.ok(sideStats(d, battle(side([[U.inf, 10]], { frontageMod: -3 }), F(10)), 'att').frontage >= d.defines.MIN_FRONTAGE_AFTER_TERRAIN);
 
   // fixed dice: equal fixed rolls on a symmetric field still decide by targeting luck only; a big fixed gap decides it
   const fx = simulate(d, battle(F(10), F(10), { dice: 'fixed', fixed: { att: 9, def: 0 } }), 300);
