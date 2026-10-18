@@ -133,7 +133,7 @@ def leaf(k, op, v, neg, scope, depth):
             ty = 'unlock' if any(x['type'] == 'unlock' for x in inner) else 'other'
             return [txt(text(loc[t]) if t in loc else human(t.replace('.tt', '').replace('_tt', '')), neg, ty, all=inner)]
         return []
-    if k == 'has_unlocked_estate_privilege_trigger':
+    if k in ('has_unlocked_estate_privilege_trigger', 'has_unlocked_government_reform_trigger'):
         return [txt('Must be unlocked first (advance, decision or event)', neg, 'unlock', 'unlock', unlocks=pref(get(v, 'type')) if isinstance(v, list) else None)]
     if k in SCOPES and isinstance(v, list):  # culture ?= { ... } / capital ?= { ... }
         subs = conds_of(v, neg, SCOPES[k], depth)
@@ -164,7 +164,9 @@ def leaf(k, op, v, neg, scope, depth):
     if k == 'has_tribal_government':
         return [txt('Tribal government', neg ^ (v == 'no'), 'government')]
     if k == 'has_reform' and isinstance(v, str):
-        return [mk('government', 'reform', v, neg)]
+        it = mk('government', 'reform', v, neg)
+        it['reform'] = pref(v)
+        return [it]
     if k in ('has_law', 'succession_law', 'parliament_type', 'has_policy') and isinstance(v, str):
         return [mk('government', {'has_law': 'law', 'succession_law': 'succession law', 'parliament_type': 'parliament', 'has_policy': 'policy'}[k], v, neg)]
     if k == 'has_advance' and isinstance(v, str):
@@ -233,7 +235,8 @@ def summary(items_):
 
 
 # ---- unlock sources: advances, decisions, events ----------------------------------------------------------------------
-UNLOCK_SRC = {}  # privilege id -> [{kind, id, name, age?, tags?}]
+UNLOCK_SRC, REFORM_SRC = {}, {}  # privilege / reform id -> [{kind, id, name, age?, tags?}]
+SRC_OF = {'unlock_estate_privilege': UNLOCK_SRC, 'unlock_government_reform': REFORM_SRC}
 adv = {}
 for f in sorted(glob.glob(f'{C}/advances/*.txt')):
     for k, v in items(rd(f)):
@@ -241,35 +244,36 @@ for f in sorted(glob.glob(f'{C}/advances/*.txt')):
             adv[k] = v
 for aid, b in adv.items():
     for k, v in items(b):
-        if k == 'unlock_estate_privilege' and isinstance(v, str):
+        if k in SRC_OF and isinstance(v, str):
             t, _ = conds(b, ('potential', 'allow'))
             e = {'kind': 'advance', 'id': aid, 'name': name(aid)}
             if get(b, 'age'):
                 e['age'] = name(get(b, 'age'))
             if t:
                 e['tags'] = sorted(t)
-            UNLOCK_SRC.setdefault(v, []).append(e)
+            SRC_OF[k].setdefault(v, []).append(e)
 
 
 def effect_types(block, out):
     for k, _, v in block:
-        if k == 'unlock_estate_privilege_effect' and isinstance(v, list):
+        if k and k.endswith('_effect') and k[:-7] in SRC_OF and isinstance(v, list):
             if isinstance(get(v, 'type'), str):
-                out.add(get(v, 'type'))
+                out.add((k[:-7], get(v, 'type')))
         if isinstance(v, list):
             effect_types(v, out)
 
 
 for kind, pat, tkeys in (('decision', f'{C}/decisions/*.txt', ('potential', 'allow')), ('event', f'{GAME}/in_game/events/**/*.txt', ('trigger',))):
     for f in sorted(glob.glob(pat, recursive=True)):
-        if 'unlock_estate_privilege_effect' not in open(f, encoding='utf-8-sig', errors='replace').read():
+        src_txt = open(f, encoding='utf-8-sig', errors='replace').read()
+        if 'unlock_estate_privilege_effect' not in src_txt and 'unlock_government_reform_effect' not in src_txt:
             continue
         for k, v in items(rd(f)):
             if not isinstance(v, list):
                 continue
             found = set()
             effect_types(v, found)
-            for p in found:
+            for sk, p in found:
                 t, _ = conds(v, tkeys)
                 fm = re.search(r'flavor_(?:decisions_)?([A-Za-z]{3})\.txt$', f)  # flavor files are per country: heuristic tag
                 if not t and fm and fm.group(1).upper() in loc:
@@ -277,7 +281,7 @@ for kind, pat, tkeys in (('decision', f'{C}/decisions/*.txt', ('potential', 'all
                 e = {'kind': kind, 'id': k, 'name': name(k, f'{k}.t') if kind == 'event' else name(k)}
                 if t:
                     e['tags'] = sorted(t)
-                UNLOCK_SRC.setdefault(p, []).append(e)
+                SRC_OF[sk].setdefault(p, []).append(e)
 
 # ---- estates & privileges ----------------------------------------------------------------------------------------------
 ESTATES = [{'id': k, 'name': name(k)} for k, v in load('estates').items()]
@@ -305,17 +309,44 @@ def effect_texts(block):
     return out
 
 
-def refs(items_, neg_ok):
+def refs(items_, neg_ok, key='priv'):
     out = []
     for i in items_:
-        if i.get('priv') and bool(i.get('not')) == neg_ok:
-            out.append(i['priv'])
-        out += refs(i.get('any', []) + i.get('all', []), neg_ok)
+        if i.get(key) and bool(i.get('not')) == neg_ok:
+            out.append(i[key])
+        out += refs(i.get('any', []) + i.get('all', []), neg_ok, key)
     return out
 
 
 def strip_priv(items_):  # privilege cross-references have their own section
     return items_
+
+
+def groups_of(b):  # the *_modifier blocks of a privilege / reform as [{kind, when?, mods, estate}]
+    groups = []
+    for k, _, x in b:
+        if k.endswith('_modifier') and isinstance(x, list):
+            pt = get(x, 'potential_trigger')
+            body = [y for y in x if y[0] != 'potential_trigger']
+            es = [y for y in body if y[0] and ESTATE_MOD.search(y[0])]
+            ot = [y for y in body if not (y[0] and ESTATE_MOD.search(y[0]))]
+            grp = {'kind': k[:-len('_modifier')]}
+            if isinstance(pt, list):
+                grp['when'] = summary(conds_of(pt)) or condition_text(pt) or 'conditional'
+            grp['mods'], grp['estate'] = mods_of(ot), mods_of(es)
+            if grp['mods'] or grp['estate']:
+                groups.append(grp)
+    return groups
+
+
+def unlock_tags(who, req, src, e):  # sources of an unlock-gated item; adds a derived "unlocked for" tag item when every source is tag-bound
+    gated = any(i['type'] == 'unlock' for i in who) or any(i['type'] == 'unlock' for i in req)
+    if src:
+        e['unlock'] = src
+        if gated and all(s.get('tags') for s in src) and not any(i['type'] == 'tag' for i in who):
+            tags = sorted({t for s in src for t in s['tags']})
+            if len(tags) <= MAXTAGS:
+                who.append(dict(mk('tag', 'unlocked for', tags), derived=True))
 
 
 res = []
@@ -331,31 +362,11 @@ for pid, b in P.items():
     d = desc(pid)
     if d:
         e['desc'] = d
-    groups = []
-    for k, _, x in b:
-        if k.endswith('_modifier') and isinstance(x, list):
-            pt = get(x, 'potential_trigger')
-            body = [y for y in x if y[0] != 'potential_trigger']
-            es = [y for y in body if y[0] and ESTATE_MOD.search(y[0])]
-            ot = [y for y in body if not (y[0] and ESTATE_MOD.search(y[0]))]
-            grp = {'kind': k[:-len('_modifier')]}
-            if isinstance(pt, list):
-                grp['when'] = summary(conds_of(pt)) or condition_text(pt) or 'conditional'
-            grp['mods'], grp['estate'] = mods_of(ot), mods_of(es)
-            if grp['mods'] or grp['estate']:
-                groups.append(grp)
+    groups = groups_of(b)
     e['groups'] = groups
     # short effect line for lists: the first plain country modifiers
     e['sum'] = [l if v == 'Yes' else f'{l} {v}' for gr in groups if not gr.get('when') for l, v in gr['mods']][:3]
-    # unlock
-    src = UNLOCK_SRC.get(pid, [])
-    gated = any(i['type'] == 'unlock' for i in who) or any(i['type'] == 'unlock' for x in req for i in [x])
-    if src:
-        e['unlock'] = src
-        if gated and all(s.get('tags') for s in src) and not any(i['type'] == 'tag' for i in who):
-            tags = sorted({t for s in src for t in s['tags']})
-            if len(tags) <= MAXTAGS:
-                who.append(dict(mk('tag', 'unlocked for', tags), derived=True))
+    unlock_tags(who, req, UNLOCK_SRC.get(pid, []), e)
     e['who'], e['whoText'] = who, summary(who) or 'Everyone'
     if req:
         e['requires'] = req
@@ -389,12 +400,90 @@ for e in res:
     if not e['availability']:
         e['availability'] = ['all']
 
+# ---- government reforms -----------------------------------------------------------------------------------------------
+# readme keys: age, government (the type that supports it), major (one per country), unique, block_for_rebel, locked, potential,
+# allow, years/months, on_activate/on_deactivate, country/province/location_modifier. Not extracted: ai_will_do, content_priority,
+# graphical_cultures, male/female_regnal_names, icon (art is made by unique.py).
+RF = load('government_reforms')
+AGE_ORDER = {a: i + 1 for i, a in enumerate(sorted({get(b, 'age') for b in RF.values() if get(b, 'age')}))}
+rres = []
+for rid, b in RF.items():
+    pot = [x for k, _, x in b if k == 'potential' and isinstance(x, list)]
+    alw = [x for k, _, x in b if k == 'allow' and isinstance(x, list)]
+    lck = [x for k, _, x in b if k == 'locked' and isinstance(x, list)]
+    who, req, lk = [[i for x in blk for i in conds_of(x)] for blk in (pot, alw, lck)]
+    # `has_reform = <itself>` in potential means the reform only shows once an event or decision has granted it
+    who = [txt('Only offered once granted by an event or decision', False, 'unlock', 'unlock') if i.get('reform') == rid and not i.get('not') else i for i in who]
+    gov = get(b, 'government')
+    if not gov:  # no explicit type: a single positive government_type in `potential` still ties it to one
+        gs = [i['ids'] for i in who if i['type'] == 'government' and i['kind'] == 'government' and not i.get('not') and len(i['ids']) == 1]
+        gov = gs[0][0] if len(gs) == 1 else None
+    age = get(b, 'age')
+    e = {'id': rid, 'name': name(rid), 'gov': gov, 'govName': name(gov) if gov else 'Any government',
+         'age': age, 'ageName': name(age) if age else 'Any age', 'ageIdx': AGE_ORDER.get(age, 0), 'major': get(b, 'major') == 'yes'}
+    if get(b, 'unique') == 'yes':
+        e['unique'] = True
+    if get(b, 'block_for_rebel') == 'yes':
+        e['noRebel'] = True
+    d = desc(rid)
+    if d:
+        e['desc'] = d
+    e['groups'] = groups = groups_of(b)
+    e['sum'] = [l if v == 'Yes' else f'{l} {v}' for gr in groups if not gr.get('when') for l, v in gr['mods']][:3]
+    sl = [v for gr in groups for l, v in gr['mods'] if l == mod_label('government_reform_slots')]
+    if sl:
+        e['slots'] = sl[0]  # "+1": extra government reform slot(s) it grants
+    sv = get(b, 'societal_values')
+    if isinstance(sv, list) and sv:
+        e['values'] = [name(v[2]) for v in sv if v[2]]
+    unlock_tags(who, req, REFORM_SRC.get(rid, []), e)
+    e['who'], e['whoText'] = who, summary(who) or 'Everyone'
+    if req:
+        e['requires'] = req
+    if lk:
+        e['locked'] = lk
+    c = sorted({r for r in refs(who, True, 'reform') + refs(req, True, 'reform') if r != rid})
+    n = sorted({r for r in refs(who, False, 'reform') + refs(req, False, 'reform') if r != rid})
+    if c:
+        e['conflicts'] = c
+    if n:
+        e['needs'] = n
+    for key, out in (('on_activate', 'onActivate'), ('on_deactivate', 'onDeactivate')):
+        t = effect_texts(get(b, key) or [])
+        if get(b, key) is not None:
+            e[out] = t or ['Scripted effects']
+    m = get(b, 'months') or (float(get(b, 'years')) * 12 if get(b, 'years') else None)
+    if m and float(m) > 0:
+        e['months'] = int(float(m))
+    e['types'] = sorted({t for i in who for t in types_of(i)})
+    e['availability'] = (['tag'] if 'tag' in e['types'] else []) + [t for t in ('culture', 'religion', 'region') if t in e['types']] + (
+        ['other'] if set(e['types']) & {'government', 'unlock', 'other'} else []) or ['all']
+    rres.append(e)
+for e in rres:  # list group: its government type, else country-specific (a tag condition) or open to any government
+    e['group'] = e['gov'] or ('country' if 'tag' in e['types'] else 'any')
+rres.sort(key=lambda e: (e['ageIdx'], e['name']))
+rids = {e['id'] for e in rres}
+for e in rres:
+    for key in ('conflicts', 'needs'):
+        if key in e:
+            e[key] = [x for x in e[key] if x in rids]
+            if not e[key]:
+                del e[key]
+GROUP_ORDER = ['monarchy', 'republic', 'theocracy', 'tribe', 'steppe_horde', 'any', 'country']
+GROUP_NAME = {'any': 'Any government', 'country': 'Country-specific, any government'}
+GROUPS = [{'id': g, 'name': GROUP_NAME.get(g) or name(g), 'count': sum(1 for e in rres if e['group'] == g)} for g in GROUP_ORDER]
+GROUPS += [{'id': g, 'name': name(g), 'count': sum(1 for e in rres if e['group'] == g)} for g in sorted({e['group'] for e in rres} - set(GROUP_ORDER))]
+GROUPS = [g for g in GROUPS if g['count']]
+AGES = [{'id': a, 'name': name(a)} for a in sorted(AGE_ORDER, key=AGE_ORDER.get)]
+
 counts = {es['id']: sum(1 for e in res if e['estate'] == es['id']) for es in ESTATES}
-out = {'estates': [dict(es, count=counts[es['id']]) for es in ESTATES if counts[es['id']]], 'privileges': res}
+out = {'estates': [dict(es, count=counts[es['id']]) for es in ESTATES if counts[es['id']]], 'privileges': res,
+       'reformGroups': GROUPS, 'ages': AGES, 'reforms': rres}
 json.dump(out, open(f'{OUT}/public/privileges.json', 'w', encoding='utf-8'), separators=(',', ':'), ensure_ascii=False)
 
 # ---- summary ----------------------------------------------------------------------------------------------------------
 print(f'{len(res)} privileges -> public/privileges.json ({os.path.getsize(OUT + "/public/privileges.json") // 1024} KB)')
+print(f'{len(rres)} reforms:', {g['name']: g['count'] for g in GROUPS}, ' major:', sum(e['major'] for e in rres), ' restricted:', sum(1 for e in rres if e['who']))
 print('per estate:', {es['name']: counts[es['id']] for es in ESTATES if counts[es['id']]})
 av = {}
 for e in res:

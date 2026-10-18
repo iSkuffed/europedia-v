@@ -6,8 +6,8 @@ type Mod = [string, string];
 interface PrivLite { id: string; name: string; estateName: string; desc?: string; whoText: string; groups: { kind: string; when?: string; mods: Mod[]; estate: Mod[] }[] }
 interface Reform { name: string; desc?: string; mods: Mod[]; major?: boolean }
 
-let privCache: Promise<{ privileges: PrivLite[] }> | undefined;
-export const loadPrivileges = (): Promise<{ privileges: PrivLite[] }> => privCache ??= fetch('privileges.json').then(r => r.json());
+let privCache: Promise<{ privileges: PrivLite[]; reforms: { id: string; name: string }[] }> | undefined;
+export const loadPrivileges = (): Promise<{ privileges: PrivLite[]; reforms: { id: string; name: string }[] }> => privCache ??= fetch('privileges.json').then(r => r.json());
 interface AdvLite { id: string; name: string; age: number; icon?: string; mods?: Mod[]; unlocks?: [string, string, string][]; whoText?: string }
 // public/advances.json (advances.py); typed in Research.svelte
 let advCache: Promise<any> | undefined;

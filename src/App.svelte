@@ -9,6 +9,7 @@
   import { DATA } from './lib/data';
   import { AGE, setAge } from './lib/age.svelte';
   import { loadNations, type NationData } from './lib/nations';
+  import { loadPrivileges } from './lib/cards';
   const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'], AGES = Object.keys(DATA.ages).map(Number);
 
   let side = $state<HTMLElement>(), main = $state<HTMLElement>(), search: HTMLInputElement;
@@ -22,9 +23,17 @@
   // nations join the search once it's first focused (their file is big)
   let N = $state<NationData>();
   const nationNames = $derived(N ? [...new Set(Object.values(N.countries).map(c => c.name))] : []);
+  // privileges and reforms too, as [name, route]; only exact names match, so a good called "Iron" still wins over "Iron Mines" privileges
+  let privs = $state<[string, string][]>([]);
+  const privNames = $derived([...new Set(privs.map(p => p[0]))]);
+  function loadSearch() {
+    loadNations().then(d => N = d);
+    loadPrivileges().then(d => privs = [...d.privileges.map(p => [p.name, `e/${p.id}`] as [string, string]), ...d.reforms.map(r => [r.name, `e/reform:${r.id}`] as [string, string])]);
+  }
   function go() {
     const q = search.value.trim().toLowerCase(), t = N && Object.keys(N.countries).find(t => N!.countries[t].name.toLowerCase() === q);
-    if (t) location.hash = `n/${t}`; else searchGo(search.value);
+    const e = !t && privs.find(p => p[0].toLowerCase() === q);
+    if (t) location.hash = `n/${t}`; else if (e) location.hash = e[1]; else searchGo(search.value);
     search.value = '';
   }
   function focusSearch(e: KeyboardEvent) {
@@ -37,8 +46,8 @@
 <header>
   <h1><a href="#/" title="Home">Europedia V</a><span class="beta" title="Work in progress: some data may be missing or wrong, and layouts may break.">Beta</span></h1>
   <nav><a href="#/" class:on={!isPops && !isNations && !isPriv && !isResearch && !isMap}>Production Chains</a><a href="#pops" class:on={isPops}>Pops</a><a href="#n" class:on={isNations}>Nations</a><a href="#m" class:on={isMap}>Map</a><a href="#e" class:on={isPriv}>Privileges</a><a href="#r" class:on={isResearch}>Research</a></nav>
-  <input id="search" bind:this={search} onchange={go} onfocus={() => loadNations().then(d => N = d)} placeholder="Search goods, buildings, pops or nations…  (/)" list="names" autocomplete="off">
-  <datalist id="names">{#each searchNames as n}<option value={n}></option>{/each}{#each nationNames as n}<option value={n}></option>{/each}</datalist>
+  <input id="search" bind:this={search} onchange={go} onfocus={loadSearch} placeholder="Search goods, nations, reforms…  (/)" title="Goods, buildings, pops, nations, privileges and reforms. Press / to jump here." list="names" autocomplete="off">
+  <datalist id="names">{#each searchNames as n}<option value={n}></option>{/each}{#each nationNames as n}<option value={n}></option>{/each}{#each privNames as n}<option value={n}></option>{/each}</datalist>
   <div class="agesel" title="The age you are playing in: production shows what's available, pop demand includes that age's modifiers">
     <span class="flbl">Age</span>
     <button class="all" class:on={!AGE.v} onclick={() => setAge(null)}>All</button>

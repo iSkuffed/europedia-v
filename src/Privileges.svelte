@@ -1,8 +1,8 @@
 <script module lang="ts">
-  // public/privileges.json (privileges.py): every estate privilege, its modifiers, and who can get it
+  // public/privileges.json (privileges.py): every estate privilege and government reform (route #e/reform:<id>), their modifiers, and who can get them
   export interface WItem {
     type: string; kind: string; text: string; ids?: string[]; names?: string[]; not?: boolean; any?: WItem[]; all?: WItem[];
-    priv?: string; derived?: boolean;
+    priv?: string; reform?: string; derived?: boolean;
   }
   type Mod = [string, string];
   interface Group { kind: string; when?: string; mods: Mod[]; estate: Mod[] }
@@ -13,7 +13,16 @@
     conflicts?: string[]; needs?: string[]; onActivate?: string[]; onDeactivate?: string[]; months?: number;
     types: string[]; availability: string[];
   }
-  interface PData { estates: { id: string; name: string; count: number }[]; privileges: Priv[] }
+  interface Reform {
+    id: string; name: string; gov: string | null; govName: string; group: string; age: string | null; ageName: string; ageIdx: number;
+    major: boolean; unique?: boolean; noRebel?: boolean; desc?: string; groups: Group[]; sum: string[]; slots?: string; values?: string[];
+    who: WItem[]; whoText: string; requires?: WItem[]; locked?: WItem[]; conflicts?: string[]; needs?: string[]; unlock?: Source[];
+    onActivate?: string[]; onDeactivate?: string[]; months?: number; types: string[]; availability: string[];
+  }
+  interface PData {
+    estates: { id: string; name: string; count: number }[]; privileges: Priv[];
+    reformGroups: { id: string; name: string; count: number }[]; ages: { id: string; name: string }[]; reforms: Reform[];
+  }
 </script>
 
 <script lang="ts">
@@ -28,6 +37,12 @@
   const AVAIL: [string, string][] = [['', 'Any'], ['all', 'Everyone'], ['tag', 'Country-specific'], ['culture', 'Culture'], ['religion', 'Religion'], ['region', 'Region'], ['other', 'Other']];
 
   let filter = $state(''), estSel = $state<string[]>([]), avail = $state(''), kind = $state('');
+  // privileges and government reforms share the page: reforms live at #e/reform:<id>
+  const RP = 'reform:';
+  let mode = $state<'priv' | 'reform'>('priv');
+  $effect.pre(() => { if (id) mode = id.startsWith(RP) ? 'reform' : 'priv'; });
+  const setMode = (m: 'priv' | 'reform') => { mode = m; if (id) location.hash = 'e'; };
+  let grpSel = $state<string[]>([]), ageSel = $state<string[]>([]), rkind = $state('');
   let cards = $state(localStorage.getItem('privView') === 'cards');
   $effect(() => localStorage.setItem('privView', cards ? 'cards' : 'list'));
   let mainEl = $state<HTMLElement>();
@@ -35,7 +50,19 @@
   const toggle = (e: MouseEvent) => (e.target as Element).closest('section.card > h4')?.parentElement!.classList.toggle('shut');
 
   const byId = $derived(D ? Object.fromEntries(D.privileges.map(p => [p.id, p])) : {} as Record<string, Priv>);
-  const P = $derived(id ? byId[id] : undefined);
+  const isR = $derived(!!id?.startsWith(RP));
+  const P = $derived(id && !isR ? byId[id] : undefined);
+  const rById = $derived(D ? Object.fromEntries(D.reforms.map(r => [r.id, r])) : {} as Record<string, Reform>);
+  const R = $derived(isR ? rById[id!.slice(RP.length)] : undefined);
+  const rshown = $derived.by(() => {
+    if (!D) return [];
+    const q = filter.trim().toLowerCase();
+    return D.reforms.filter(r => (!grpSel.length || grpSel.includes(r.group)) && (!ageSel.length || (r.age && ageSel.includes(r.age))) && (!avail || r.availability.includes(avail))
+      && (!rkind || (rkind === 'major') === r.major) && (!kind || (kind === 'all' ? r.availability.includes('all') : r.types.includes(kind)))
+      && (!q || (r.name + ' ' + r.id + ' ' + r.govName + ' ' + r.ageName + ' ' + r.whoText + ' ' + r.groups.flatMap(g => g.mods.concat(g.estate).map(m => m[0])).join(' ')).toLowerCase().includes(q)));
+  });
+  const rgroupsShown = $derived(D ? D.reformGroups.map(g => ({g, list: rshown.filter(r => r.group === g.id)})).filter(g => g.list.length) : []);
+  const toggleIn = (a: string[], v: string) => a.includes(v) ? a.filter(x => x !== v) : [...a, v];
   const shown = $derived.by(() => {
     if (!D) return [];
     const q = filter.trim().toLowerCase();
@@ -48,6 +75,8 @@
   // reverse links: who excludes / needs this privilege
   const excludedBy = $derived(P && D ? D.privileges.filter(p => p.conflicts?.includes(P.id)).map(p => p.id) : []);
   const neededBy = $derived(P && D ? D.privileges.filter(p => p.needs?.includes(P.id)).map(p => p.id) : []);
+  const rExcludedBy = $derived(R && D ? D.reforms.filter(r => r.conflicts?.includes(R.id)).map(r => r.id) : []);
+  const rNeededBy = $derived(R && D ? D.reforms.filter(r => r.needs?.includes(R.id)).map(r => r.id) : []);
   const siblings = $derived(P && D ? D.privileges.filter(p => p.estate === P.estate && p.id !== P.id && p.who.length === P.who.length && p.whoText === P.whoText && P.who.length).map(p => p.id) : []);
 
   // overview: one short who badge per top-level condition
@@ -61,10 +90,11 @@
     } else label = short(it.text);
     return {type: it.type, label, title: it.text, not: it.not};
   }
-  const badges = (p: Priv): Badge[] => p.who.length ? p.who.map(badge) : [{type: 'all', label: 'Everyone', title: 'No restriction on who is offered it'}];
-  const effLine = (p: Priv) => p.sum.length ? p.sum.join(' · ') : p.groups.flatMap(g => g.estate).map(m => `${m[0]} ${m[1]}`).slice(0, 2).join(' · ');
+  const badges = (p: Priv | Reform): Badge[] => p.who.length ? p.who.map(badge) : [{type: 'all', label: 'Everyone', title: 'No restriction on who is offered it'}];
+  const effLine = (p: Priv | Reform) => p.sum.length ? p.sum.join(' · ') : p.groups.flatMap(g => g.estate).map(m => `${m[0]} ${m[1]}`).slice(0, 2).join(' · ');
 
-  const availCount = $derived(D ? Object.fromEntries(AVAIL.slice(1).map(([k]) => [k, D!.privileges.filter(p => p.availability.includes(k)).length])) : {} as Record<string, number>);
+  const availCount = $derived(D ? Object.fromEntries(AVAIL.slice(1).map(([k]) => [k, (mode === 'reform' ? D!.reforms : D!.privileges).filter(p => p.availability.includes(k)).length])) : {} as Record<string, number>);
+  const shownCount = $derived(mode === 'reform' ? rshown.length : shown.length);
   const flagOff = (e: Event) => (e.currentTarget as HTMLElement).remove();
 </script>
 
@@ -76,11 +106,17 @@
   {:else if it.type === 'tag' && it.ids}
     <span class="wb t-tag" class:neg={it.not} class:der={it.derived}><span class="wk">{it.not ? 'not ' : ''}{it.kind}</span>
       {#each it.ids as t, i}<a class="wn" href="#n/{t}"><span class="fl"><img src="flags/{t}.png" alt="" loading="lazy" onerror={flagOff}></span>{it.names?.[i] ?? t}</a>{/each}</span>
+  {:else if it.reform}
+    <span class="wb t-government" class:neg={it.not}><span class="wk">{it.not ? 'not ' : ''}reform</span><a class="wn" href="#e/{RP}{it.reform}">{it.names?.[0] ?? it.reform}</a></span>
   {:else if it.priv}
     <span class="wb t-other" class:neg={it.not}><span class="wk">{it.not ? 'not ' : ''}privilege</span><a class="wn" href="#e/{it.priv}">{it.names?.[0] ?? it.priv}</a></span>
   {:else}
     <span class="wb t-{it.type}" class:neg={it.not} title={it.text}>{#if it.names?.length}<span class="wk">{it.not ? 'not ' : ''}{it.kind}</span><span class="wn">{it.names.join(', ')}</span>{:else}{it.text}{/if}</span>
   {/if}
+{/snippet}
+
+{#snippet wrows(list: WItem[])}
+  {#each list as it}<div class="wrow"><span class="wt t-{it.type}">{TYPE_LABEL[it.type] ?? it.type}</span><div class="wc">{@render who(it)}</div></div>{/each}
 {/snippet}
 
 {#snippet mods(ms: Mod[])}
@@ -91,31 +127,131 @@
 
 <div class="layout">
   <aside>
-    <h3>Estate privileges</h3>
-    <input class="nfilter" placeholder="Find a privilege…" bind:value={filter} autocomplete="off">
+    <h3>{mode === 'reform' ? 'Government reforms' : 'Estate privileges'}</h3>
+    <div class="pfb mode"><button class:on={mode === 'priv'} onclick={() => setMode('priv')}>Privileges</button><button class:on={mode === 'reform'} onclick={() => setMode('reform')}>Reforms</button></div>
+    <input class="nfilter" placeholder={mode === 'reform' ? 'Find a reform…' : 'Find a privilege…'} bind:value={filter} autocomplete="off">
     {#if D}
       <div class="pf">
-        <div class="pfl">Estate</div>
-        <div class="pfb">{#each D.estates as e}<button class:on={estSel.includes(e.id)} onclick={() => toggleEst(e.id)} title="{e.count} privileges">{e.name}</button>{/each}</div>
+        {#if mode === 'reform'}
+          <div class="pfl">Government</div>
+          <div class="pfb">{#each D.reformGroups as g}<button class:on={grpSel.includes(g.id)} onclick={() => grpSel = toggleIn(grpSel, g.id)} title="{g.count} reforms">{g.name}</button>{/each}</div>
+          <div class="pfl">Age</div>
+          <div class="pfb">{#each D.ages as a}<button class:on={ageSel.includes(a.id)} onclick={() => ageSel = toggleIn(ageSel, a.id)}>{a.name}</button>{/each}</div>
+          <div class="pfl">Kind</div>
+          <div class="pfb">{#each [['', 'Any'], ['major', 'Major'], ['minor', 'Minor']] as [k, l]}<button class:on={rkind === k} onclick={() => rkind = k} title={k === 'major' ? 'Exclusive: only one major reform per country' : ''}>{l}</button>{/each}</div>
+        {:else}
+          <div class="pfl">Estate</div>
+          <div class="pfb">{#each D.estates as e}<button class:on={estSel.includes(e.id)} onclick={() => toggleEst(e.id)} title="{e.count} privileges">{e.name}</button>{/each}</div>
+        {/if}
         <div class="pfl">Available to</div>
-        <div class="pfb">{#each AVAIL as [k, l]}<button class:on={avail === k} onclick={() => avail = k} title={k ? `${availCount[k]} privileges` : 'No filter'}>{l}</button>{/each}</div>
+        <div class="pfb">{#each AVAIL as [k, l]}<button class:on={avail === k} onclick={() => avail = k} title={k ? `${availCount[k]} ${mode === 'reform' ? 'reforms' : 'privileges'}` : 'No filter'}>{l}</button>{/each}</div>
       </div>
       <div class="blist">
-        <a href="#e" class:on={!id}>Overview<span class="tag up-tag">{shown.length}</span></a>
-        {#each groupsShown as g (g.e.id)}
-          <h3>{g.e.name}<span class="cnt">{g.list.length}</span></h3>
-          {#each g.list as p (p.id)}
-            <a href="#e/{p.id}" class:on={id === p.id}><span class="pn">{p.name}</span>{#if p.who.length}<span class="dot t-{p.types[0] ?? 'other'}" title={p.whoText}></span>{/if}</a>
-          {/each}
-        {:else}<p class="meta">No privilege matches.</p>{/each}
+        <a href="#e" class:on={!id}>Overview<span class="tag up-tag">{shownCount}</span></a>
+        {#if mode === 'reform'}
+          {#each rgroupsShown as g (g.g.id)}
+            <h3>{g.g.name}<span class="cnt">{g.list.length}</span></h3>
+            {#each g.list as r (r.id)}
+              <a href="#e/{RP}{r.id}" class:on={id === RP + r.id}><span class="pn">{r.name}</span>{#if r.who.length}<span class="dot t-{r.types[0] ?? 'other'}" title={r.whoText}></span>{/if}</a>
+            {/each}
+          {:else}<p class="meta">No reform matches.</p>{/each}
+        {:else}
+          {#each groupsShown as g (g.e.id)}
+            <h3>{g.e.name}<span class="cnt">{g.list.length}</span></h3>
+            {#each g.list as p (p.id)}
+              <a href="#e/{p.id}" class:on={id === p.id}><span class="pn">{p.name}</span>{#if p.who.length}<span class="dot t-{p.types[0] ?? 'other'}" title={p.whoText}></span>{/if}</a>
+            {/each}
+          {:else}<p class="meta">No privilege matches.</p>{/each}
+        {/if}
       </div>
-    {:else}<p class="meta">Loading privileges…</p>{/if}
+    {:else}<p class="meta">Loading…</p>{/if}
   </aside>
 
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <main bind:this={mainEl} onclick={toggle}>{#key id}<div class="enter">
     {#if !D}
       <p class="meta">Loading privileges…</p>
+    {:else if isR && !R}
+      <div class="title"><div><h2>Unknown reform</h2><p class="desc">There is no government reform called “{id!.slice(RP.length)}”. <a class="wn" href="#e">Back to the overview</a>.</p></div></div>
+    {:else if R}
+      <div class="title lg"><span class="art big"><img src="icons/reforms/{R.id}.webp" alt=""></span>
+        <div><h2>{R.name}</h2>
+          <div class="meta"><span>{R.major ? 'Major reform' : 'Government reform'}</span><span>{R.govName}</span>{#if R.age}<span>Age of {R.ageName}</span>{/if}{#if R.months}<span>takes {R.months} months to take effect</span>{/if}{#if R.locked}<span>locked once taken</span>{/if}{#if R.noRebel}<span>not for rebels</span>{/if}</div>
+          {#if R.desc}<p class="desc">{R.desc}</p>{/if}
+          <div class="wline"><span class="flbl">Who can get it</span>
+            {#if R.who.length}{#each R.who as it}{@render who(it)}{/each}{:else}<span class="wb t-all">Everyone</span>{/if}</div>
+        </div>
+      </div>
+
+      <div class="ncols">
+        <div>
+          {#each [...new Set(R.groups.filter(g => g.mods.length).map(g => g.kind))] as k}
+            <section class="card"><h4 class="out">{k[0].toUpperCase() + k.slice(1)} modifiers<small>{k === 'location' ? 'on each location it applies to' : 'on the whole country'}</small></h4>
+              {#each R.groups.filter(g => g.kind === k && g.mods.length) as gr}
+                {#if gr.when}<p class="meta cond">only when: {gr.when}</p>{/if}
+                {@render mods(gr.mods)}
+              {/each}
+            </section>
+          {/each}
+          {#if R.groups.some(g => g.estate.length)}
+            <section class="card"><h4 class="pop">Estate effects<small>power and satisfaction</small></h4>
+              {#each R.groups.filter(g => g.estate.length) as gr}
+                {#if gr.when}<p class="meta">only when: {gr.when}</p>{/if}
+                {@render mods(gr.estate)}
+              {/each}
+            </section>
+          {/if}
+          {#if R.values?.length}
+            <section class="card"><h4 class="gold">Societal focus<small>values this reform pushes</small></h4>
+              <div>{#each R.values as v}<span class="chip">{v}</span>{/each}</div>
+            </section>
+          {/if}
+          {#if R.onActivate?.length || R.onDeactivate?.length}
+            <section class="card"><h4 class="gold">When adopted or removed</h4>
+              {#if R.onActivate?.length}<p class="meta">On adopting</p><ul class="tips">{#each R.onActivate as t}<li>{t}</li>{/each}</ul>{/if}
+              {#if R.onDeactivate?.length}<p class="meta">On removing</p><ul class="tips">{#each R.onDeactivate as t}<li>{t}</li>{/each}</ul>{/if}
+            </section>
+          {/if}
+        </div>
+        <div>
+          <section class="card"><h4 class="gold">Who can get it<small>what makes it available to a country</small></h4>
+            {#if R.who.length}
+              {@render wrows(R.who)}
+              <p class="meta">All of these must hold at once.</p>
+            {:else}<p class="none">Nothing restricts it: any country with {R.gov ? `a ${R.govName} government` : 'any government'} can be offered it.</p>{/if}
+          </section>
+
+          {#if R.requires?.length}
+            <section class="card"><h4 class="in">To adopt it<small>needed before you can pick it</small></h4>{@render wrows(R.requires)}</section>
+          {/if}
+
+          <section class="card"><h4 class="in">Removing</h4>
+            {#if R.locked?.length}
+              <p class="meta">It is locked and cannot be changed by hand while:</p>
+              {@render wrows(R.locked)}
+            {:else}<p class="none">Not locked: it can be swapped for another reform whenever you like.</p>{/if}
+          </section>
+
+          <section class="card"><h4 class="pop">How it unlocks</h4>
+            {#if R.unlock?.length}
+              {#each R.unlock as s}
+                <div class="wrow"><span class="wt t-unlock">{s.kind}</span><div class="wc"><b>{s.name}</b>{#if s.age} <span class="tag">{s.age}</span>{/if}
+                  {#each s.tags ?? [] as t}<a class="wn" href="#n/{t}"><span class="fl"><img src="flags/{t}.png" alt="" onerror={flagOff}></span>{t}</a>{/each}</div></div>
+              {/each}
+            {:else if R.who.some(i => i.type === 'unlock') || R.requires?.some(i => i.type === 'unlock')}
+              <p class="none">Granted by a script (an event or a decision flag) that this extractor could not trace.</p>
+            {:else}<p class="none">Offered from the start; no advance is needed to unlock it.</p>{/if}
+          </section>
+
+          {#if R.conflicts?.length || R.needs?.length || rExcludedBy.length || rNeededBy.length}
+            <section class="card"><h4 class="gold">Related reforms</h4>
+              {#each [['Cannot be combined with', [...new Set([...(R.conflicts ?? []), ...rExcludedBy])]], ['Needs', R.needs ?? []], ['Needed by', rNeededBy]] as [label, list] (label)}
+                {#if list.length}<div class="wrow"><span class="wt t-other">{label}</span><div class="wc">{#each list as r}<a class="chip" href="#e/{RP}{r}">{rById[r]?.name ?? r}</a>{/each}</div></div>{/if}
+              {/each}
+            </section>
+          {/if}
+        </div>
+      </div>
     {:else if id && !P}
       <div class="title"><div><h2>Unknown privilege</h2><p class="desc">There is no estate privilege called “{id}”. <a class="wn" href="#e">Back to the overview</a>.</p></div></div>
     {:else if P}
@@ -197,6 +333,35 @@
           {/if}
         </div>
       </div>
+    {:else if mode === 'reform'}
+      <div class="title"><div><h2>Government reforms</h2>
+        <p class="desc">Every government reform, {D.reforms.length} in all, grouped by the government type that supports it. A reform sets how the state works; a country holds a few at a time, and a
+          major reform is exclusive: only one per country. The page shows what each does, who is offered it (any country, or only certain countries, cultures or religions), what it takes to
+          adopt, and which reforms rule each other out. Pick one on the left or open it from the lists below.</p>
+        <div class="wline"><span class="flbl">Legend</span>
+          {#each ['all', 'tag', 'culture', 'religion', 'region', 'government', 'unlock', 'other'] as t}<button class="wb t-{t}" class:on={kind === t} onclick={() => kind = kind === t ? '' : t}
+            title={kind === t ? 'Show all again' : t === 'all' ? 'Only reforms open to everyone' : `Only reforms with a ${TYPE_LABEL[t].toLowerCase()} condition`}>{t === 'all' ? 'Everyone' : TYPE_LABEL[t]}</button>{/each}
+          {#if kind}<span class="meta">{rshown.length} shown</span>{/if}</div>
+        <div class="wline"><span class="flbl">View</span><span class="pfb"><button class:on={!cards} onclick={() => cards = false}>List</button><button class:on={cards} onclick={() => cards = true}>Cards</button></span></div>
+      </div></div>
+      {#each rgroupsShown as g (g.g.id)}
+        <section class="card"><h4 class="gold">{g.g.name}<small>{g.list.length} reforms</small></h4>
+          {#if cards}<div class="cardgrid">{#each g.list as r (r.id)}
+            <a class="pcard" href="#e/{RP}{r.id}">
+              <span class="art"><img src="icons/reforms/{r.id}.webp" alt="" loading="lazy">{#if r.who.length}<span class="dot t-{r.types[0] ?? 'other'}" title={r.whoText}></span>{/if}</span>
+              <b class="pn">{r.name}</b>
+              <span class="pe">{#if r.major}Major · {/if}{r.age ? r.ageName + ' · ' : ''}{effLine(r)}</span>
+            </a>
+          {/each}</div>{:else}
+          {#each g.list as r (r.id)}
+            <a class="prow" href="#e/{RP}{r.id}">
+              <b class="pn">{r.name}{#if r.major} <span class="tag">Major</span>{/if}</b>
+              <span class="pe">{effLine(r)}</span>
+              <span class="pb">{#if r.age}<span class="tag">{r.ageName}</span>{/if}{#each badges(r).slice(0, 3) as b}<span class="wb t-{b.type}" class:neg={b.not} title={b.title}>{b.label}</span>{/each}{#if r.who.length > 3}<span class="tag">+{r.who.length - 3}</span>{/if}</span>
+            </a>
+          {/each}{/if}
+        </section>
+      {:else}<p class="meta">No reform matches the filters.</p>{/each}
     {:else}
       <div class="title"><div><h2>Estate privileges</h2>
         <p class="desc">Every privilege you can grant an estate, {D.privileges.length} in all. Each trades the crown's power for estate favour; the page shows what it does, who is offered it
@@ -238,6 +403,7 @@
   .pfb button.on { border-color: var(--frame-hi); color: var(--gold); box-shadow: 0 0 6px #d8b46a55; background: linear-gradient(#3a3017, #1d1a10); }
   aside .blist h3 { display: flex; justify-content: space-between; }
   aside .blist .pn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mode { margin: 0 0 8px; }
   .cnt { color: var(--gold); font-size: 12px; }
   .dot { margin-left: auto; flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
 
@@ -284,6 +450,7 @@
   .prow:hover .pn { color: var(--gold); }
   .prow .pn { font-weight: 600; }
   .prow .pe { color: var(--dim); font-size: 13px; }
+  .prow .pn .tag { margin-left: 6px; }
   .prow .pb { display: flex; flex-wrap: wrap; justify-content: flex-end; }
   .prow .wb { font-size: 12px; padding: 0 7px; max-width: 100%; }
   @media (max-width: 1300px) { .prow { grid-template-columns: minmax(8em, 12em) minmax(0, 1fr); } .prow .pb { grid-column: 1 / -1; justify-content: flex-start; } }
