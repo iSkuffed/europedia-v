@@ -282,7 +282,7 @@ table.ptab { border-collapse: collapse; width: 100%; }
 .dm.later { opacity: .45; }
 header nav a { white-space: nowrap; }
 #search { min-width: 200px; }
-@media (max-width: 1450px) { .agesel .agename, .agesel .flbl { display: none; } }
+@media (max-width: 1450px) { .agesel .agename, .agesel .flbl { display: none; } header { gap: 10px; } header nav a { padding: 4px 8px; } #search { min-width: 160px; } }
 .tips { margin: 6px 0; padding-left: 20px; }
 .tips li { margin-bottom: 8px; }
 .tips li b { color: var(--gold); font-weight: 600; }

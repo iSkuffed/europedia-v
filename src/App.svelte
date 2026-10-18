@@ -5,6 +5,7 @@
   import Nations from './Nations.svelte';
   import Privileges from './Privileges.svelte';
   import Research from './Research.svelte';
+  import Units from './Units.svelte';
   import WorldMap from './WorldMap.svelte';
   import { DATA } from './lib/data';
   import { AGE, setAge } from './lib/age.svelte';
@@ -18,9 +19,9 @@
   let hash = $state(location.hash);
   const isPops = $derived(/^#(pops|p\/)/.test(hash)), isNations = $derived(/^#n(\/|$)/.test(hash));
   const isPriv = $derived(/^#e(\/|$)/.test(hash)), isResearch = $derived(/^#r(\/|$)/.test(hash));
-  const isMap = $derived(/^#m(\/|$)/.test(hash));
+  const isMap = $derived(/^#m(\/|$)/.test(hash)), isUnits = $derived(/^#u(\/|$)/.test(hash));
   // the Production Chains page renders itself into the aside / main panes while it is shown
-  $effect(() => { if (!isPops && !isNations && !isPriv && !isResearch && !isMap && side && main) return untrack(() => mountProduction(side!, main!)); });
+  $effect(() => { if (!isPops && !isNations && !isPriv && !isResearch && !isMap && !isUnits && side && main) return untrack(() => mountProduction(side!, main!)); });
 
   // nations join the search once it's first focused (their file is big)
   let N = $state<NationData>();
@@ -68,7 +69,7 @@
     <h1><a href="#/" title="Home">Europedia V</a><span class="beta" title="Work in progress: some data may be missing or wrong, and layouts may break.">Beta</span></h1>
     <small class="legal" title="Fan-made, not affiliated with Paradox Interactive. Game data and art © Paradox Interactive.">Fan-made · not affiliated with Paradox</small>
   </div>
-  <nav><a href="#/" class:on={!isPops && !isNations && !isPriv && !isResearch && !isMap}>Production Chains</a><a href="#pops" class:on={isPops}>Pops</a><a href="#n" class:on={isNations}>Nations</a><a href="#m" class:on={isMap}>Map</a><a href="#e" class:on={isPriv}>Privileges</a><a href="#r" class:on={isResearch}>Research</a></nav>
+  <nav><a href="#/" class:on={!isPops && !isNations && !isPriv && !isResearch && !isMap && !isUnits}>Production Chains</a><a href="#pops" class:on={isPops}>Pops</a><a href="#n" class:on={isNations}>Nations</a><a href="#m" class:on={isMap}>Map</a><a href="#e" class:on={isPriv}>Privileges</a><a href="#r" class:on={isResearch}>Research</a><a href="#u" class:on={isUnits}>Units</a></nav>
   <input id="search" bind:this={search} onchange={go} onfocus={loadSearch} placeholder="Search goods, nations, reforms…  (/)" title="Goods, buildings, pops, nations, privileges and reforms. Press / to jump here." list="names" autocomplete="off">
   <datalist id="names">{#each searchNames as n}<option value={n}></option>{/each}{#each nationNames as n}<option value={n}></option>{/each}{#each privNames as n}<option value={n}></option>{/each}</datalist>
   <div class="viewas">
@@ -99,6 +100,8 @@
   <Privileges id={hash.startsWith('#e/') ? decodeURIComponent(hash.slice(3)) : null} />
 {:else if isMap}
   <WorldMap />
+{:else if isUnits}
+  <Units id={hash.startsWith('#u/') ? decodeURIComponent(hash.slice(3)) : null} />
 {:else if isResearch}
   <Research id={hash.startsWith('#r/') ? decodeURIComponent(hash.slice(3)) : null} />
 {:else}

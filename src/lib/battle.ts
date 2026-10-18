@@ -374,6 +374,7 @@ function run(P: Prep, seed: number, record: boolean): BattleLog {
       for (const r of L.regs) r.men *= 1 - K.RETREAT_STRENGTH_DAMAGE;
       notes.push(`${NAME[1 - w]} retreats on day ${day}, losing ${Math.round(K.RETREAT_STRENGTH_DAMAGE * 100)}% of its survivors`);
     }
+    if (record) Object.assign(daily[daily.length - 1], { att: state(A), def: state(B) });  // the last day shows the wipe/retreat losses
     return finish(w ? 'def' : 'att', day);
   }
   notes.push(`No result after ${MAX_DAYS} days`);
