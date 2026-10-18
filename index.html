@@ -8,5 +8,13 @@
 <body>
 <div id="app"></div>
 <script type="module" src="/src/main.ts"></script>
+<script>
+  // GoatCounter: pages live in the hash, so count "#g/masonry" etc. as their own paths; filter settings after "?" don't count as new pages
+  var gcPage = () => location.hash.split('?')[0];
+  window.goatcounter = { path: p => p + gcPage() };
+  var gcLast = gcPage();
+  addEventListener('hashchange', () => { if (gcPage() !== gcLast && window.goatcounter.count) { gcLast = gcPage(); goatcounter.count(); } });
+</script>
+<script data-goatcounter="https://skuffedaf.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>
