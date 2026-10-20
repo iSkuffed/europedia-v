@@ -13,6 +13,9 @@
   import { loadPrivileges } from './lib/cards';
   import { SCOPE, setScope, loadScope } from './lib/scope.svelte';
   import { tick } from 'svelte';
+  // bump these by hand when the data is re-extracted for a new game patch
+  const GAME_VERSION = '1.14.1', DATA_UPDATED = '2026-10-18';
+  const updated = new Date(DATA_UPDATED).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
   const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'], AGES = Object.keys(DATA.ages).map(Number);
 
   let side = $state<HTMLElement>(), main = $state<HTMLElement>(), search: HTMLInputElement;
@@ -110,4 +113,7 @@
     <main bind:this={main}></main>
   </div>
 {/if}
-<a class="sig" href="https://github.com/iSkuffed" target="_blank" rel="noopener" title="Skuffed Software"><img src="skuffed.svg" alt="Skuffed Software"></a>
+<div class="sig">
+  <span class="ver" title="Built from the game files of Europa Universalis V {GAME_VERSION}. After a patch, anything it changed shows the old values until the data is updated here.">EU5 {GAME_VERSION} · data updated {updated}</span>
+  <a href="https://github.com/iSkuffed" target="_blank" rel="noopener" title="Skuffed Software"><img src="skuffed.svg" alt="Skuffed Software"></a>
+</div>
