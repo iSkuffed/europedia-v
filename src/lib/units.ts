@@ -76,8 +76,13 @@ export interface BattleInput {
   seed?: number;
 }
 export interface SideState { men: number; morale: number; maxMorale: number; front: number; reserve: number; broken: number }  // men in units, morale as average over living regiments
+// Per-regiment replay data for the battle animation, in each side's own order (strongest first), so index i is the same regiment in every frame.
+export interface RegInfo { unit: string; max: number; maxMorale: number }
+export type RegState = [men: number, morale: number, sec: number, flags: number]  // sec: lane 0..2 (faces the enemy's lane of the same number), 3 = reserve; flags: 1 engaged, 2 broken or routed
 export interface BattleLog {
   winner: 'att' | 'def' | 'draw'; days: number;
+  regs: { att: RegInfo[]; def: RegInfo[] };
+  frames: { att: RegState[]; def: RegState[] }[];  // frames[0] is the start, frames[d] the end of day d (one more than daily)
   start: { att: SideState; def: SideState };
   daily: { att: SideState; def: SideState; diceAtt: number; diceDef: number }[];
   losses: { att: number; def: number };  // men

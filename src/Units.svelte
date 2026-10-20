@@ -1,7 +1,8 @@
 <script lang="ts">
   // Units tab: a browser for every land unit (#u, #u/<unitId>) and a land battle simulator (#u/battle) on battle.ts.
-  import { loadUnits, type UnitsData, type Unit, type Cat, type SideInput, type BattleInput, type Summary, type General, type SideState } from './lib/units';
-  import { simulate, sideStats, APPROX } from './lib/battle';
+  import { loadUnits, type UnitsData, type Unit, type Cat, type SideInput, type BattleInput, type Summary, type BattleLog, type General, type SideState } from './lib/units';
+  import { simulate, simulateOnce, sideStats, APPROX } from './lib/battle';
+  import BattleTheatre from './BattleTheatre.svelte';
   import { fits, type Fit, type WhoItem } from './lib/fit';
   import { SCOPE } from './lib/scope.svelte';
   import { loadAdvances } from './lib/cards';
@@ -243,6 +244,14 @@
     return () => clearTimeout(t);
   });
 
+  // the animated battle: one recorded run; "Fight again" rolls new dice instead of reusing a fixed seed
+  let theatre = $state.raw<BattleLog | null>(null);
+  function fight(again = false) {
+    if (!D || !input || !ready) return;
+    try { theatre = simulateOnce(D, again ? { ...input, seed: undefined } : input); } catch (e) { err = e instanceof Error ? e.message : String(e); }
+  }
+  $effect(() => { if (!isBattle) theatre = null; });
+
   // regiments
   const menOf = (r: { unit: string; n: number }) => (U.get(r.unit)?.str ?? 0) * 1000 * r.n;
   function addRegs(c: SideCfg, unitId: string, n: number) {
@@ -309,6 +318,8 @@
     const dice = -(topo?.dice ?? 0) - (veg?.dice ?? 0) + (B.river ? K.RIVER_CROSSING_DICE : 0) + (B.strait ? K.STRAIT_CROSSING_DICE : 0) + (B.landing ? K.SEA_LANDING_DICE : 0);
     return { front: Math.max(K.MIN_FRONTAGE_AFTER_TERRAIN, raw), dice, topo, veg, rank };
   });
+
+  const where = $derived(B && field ? [field.topo?.name, field.veg?.name, field.rank?.name, B.river && 'river crossing', B.strait && 'strait crossing', B.landing && 'sea landing'].filter(Boolean).join(' · ') : '');
 
   // ---- sample battle chart ----------------------------------------------------------------------------------------------
   const ATT = '#e48a5c', DEF = '#82bde6';
@@ -607,9 +618,13 @@
 
         <div class="sides">
           {@render sidePanel('att')}
-          <div class="vs" aria-hidden="true">VS</div>
+          <button class="vs" onclick={() => fight()} disabled={!ready} title={ready ? 'Watch one battle play out, day by day' : 'Give both sides at least one regiment'}>
+            <span class="orb"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 3.5L16 16M12 16l4-4M16 16l3 3"/><circle cx="20.3" cy="20.3" r="1"/><path d="M20.5 3.5L8 16M12 16 8 12M8 16l-3 3"/><circle cx="3.7" cy="20.3" r="1"/></svg></span>
+            <span class="cap">Battle</span></button>
           {@render sidePanel('def')}
         </div>
+
+        {#if theatre && D}<BattleTheatre log={theatre} {D} {where} onagain={() => fight(true)} onclose={() => theatre = null} />{/if}
 
         {#if result && ready}
           {@const s = result.sample}
@@ -951,9 +966,15 @@
 
   /* simulator: the two armies */
   .sides { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 54px; align-items: start; }
-  .vs { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); z-index: 1; width: 40px; height: 40px; display: grid; place-items: center; border-radius: 50%;
-    font-size: 13px; font-weight: 700; letter-spacing: 1px; color: var(--gold); text-shadow: 0 1px 1px #000; border: 2px solid var(--frame-hi);
-    background: radial-gradient(circle at 40% 35%, #7a6328, #3b2c10); box-shadow: 0 0 0 1px #000, 0 2px 8px #000c; }
+  .vs { position: absolute; left: 50%; top: 0; transform: translateX(-50%); z-index: 1; width: 54px; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer;
+    background: none; border: 0; padding: 0; font: inherit; color: var(--gold); }
+  .vs .orb { width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; border: 2px solid var(--frame-hi); transition: transform .15s, box-shadow .15s;
+    background: radial-gradient(circle at 40% 35%, #8a7030, #3b2c10); box-shadow: 0 0 0 1px #000, 0 2px 8px #000c; animation: beckon 2.6s ease-in-out infinite; }
+  .vs .cap { font-size: 10px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase; text-shadow: 0 1px 2px #000; }
+  .vs:hover:not(:disabled) .orb { transform: scale(1.08) rotate(-6deg); box-shadow: 0 0 0 1px #000, 0 0 16px #f0d58caa; animation: none; }
+  .vs:active:not(:disabled) .orb { transform: scale(.96); }
+  .vs:disabled { cursor: not-allowed; opacity: .45; } .vs:disabled .orb { animation: none; }
+  @keyframes beckon { 50% { box-shadow: 0 0 0 1px #000, 0 0 12px #f0d58c66; } }
   .side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .shead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 12px; border: 1px solid var(--frame); border-top: 3px solid var(--c);
     background: linear-gradient(90deg, var(--tint), #18202a 75%); box-shadow: inset 0 0 0 1px #000, 0 2px 6px #0008; }
@@ -1058,6 +1079,6 @@
   .notes { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
   .notes li { margin-bottom: 2px; }
 
-  @media (max-width: 1250px) { .sides { grid-template-columns: minmax(0, 1fr); } .vs { display: none; } }
+  @media (max-width: 1250px) { .sides { grid-template-columns: minmax(0, 1fr); } .vs { position: static; transform: none; margin: 0 auto; } }
   @media (prefers-reduced-motion: reduce) { .vbar span { transition: none; } }
 </style>

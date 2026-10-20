@@ -1,5 +1,5 @@
 // EU5 land battle engine. Pure TS, no DOM. Math follows /tmp/eu5w/SPEC.md section 2; every GUESS is listed in APPROX.
-import type { BattleInput, BattleLog, Cat, SideInput, SideState, Summary, Unit, UnitsData } from './units';
+import type { BattleInput, BattleLog, Cat, RegState, SideInput, SideState, Summary, Unit, UnitsData } from './units';
 
 export const APPROX: string[] = [
   'Damage per day is COMBAT_DAMAGE_MULT x dice x LAND_STRENGTH/MORALE_DAMAGE_MODIFIER (x men for strength), rebuilt from the wiki\'s hourly formula.',
@@ -211,6 +211,7 @@ function state(S: Side): SideState {
   return { men: Math.round(men), morale: alive ? mor / alive : 0, maxMorale: alive ? maxM / alive : 0, front, reserve, broken };
 }
 
+const snap = (S: Side, rout = false): RegState[] => S.regs.map(r => [r.men, r.morale, r.sec, (r.engaged ? 1 : 0) | (r.broken || rout ? 2 : 0)]);
 const hasFront = (S: Side) => S.regs.some(r => !r.broken && r.sec !== RESERVE);
 // reserves that can still refill the line: not broken, not auxiliary, able to move
 const hasReserve = (S: Side) => S.regs.some(r => !r.broken && r.sec === RESERVE && !r.aux && r.moveP > 0);
@@ -315,10 +316,13 @@ function run(P: Prep, seed: number, record: boolean): BattleLog {
   for (const S of P.s) for (const r of S.regs) {
     r.sec = r.sec0; r.men = r.max; r.morale = r.maxMorale; r.engaged = r.broken = false; r.target = null; r.dMen = r.dMor = 0;
   }
-  const notes: string[] = [], daily: BattleLog['daily'] = [];
+  const notes: string[] = [], daily: BattleLog['daily'] = [], frames: BattleLog['frames'] = [];
   const start = { att: state(A), def: state(B) }, men0 = [totalMen(A), totalMen(B)];
+  const info = (S: Side) => S.regs.map(r => ({ unit: r.u.id, max: r.max, maxMorale: r.maxMorale }));
+  const frame = (rout = -1) => frames.push({ att: snap(A, rout === 0), def: snap(B, rout === 1) });  // rout: the beaten side, shown wholly broken
+  if (record) frame();
   const finish = (winner: BattleLog['winner'], days: number): BattleLog => ({
-    winner, days, start, daily, notes,
+    winner, days, start, daily, notes, frames, regs: { att: info(A), def: info(B) },
     losses: { att: Math.round(men0[0] - totalMen(A)), def: Math.round(men0[1] - totalMen(B)) },
   });
   const fight0 = [combatMen(A), combatMen(B)];
@@ -330,7 +334,7 @@ function run(P: Prep, seed: number, record: boolean): BattleLog {
       const ratio = fight0[1 - i] ? `${Math.round(fight0[i] / fight0[1 - i])}:1` : 'no fighting regiments';
       for (const r of P.s[1 - i].regs) { r.men = 0; r.broken = true; }
       notes.push(`${NAME[1 - i]} overrun on day 1 (${ratio})`);
-      if (record) daily.push({ att: state(A), def: state(B), diceAtt: 0, diceDef: 0 });
+      if (record) { daily.push({ att: state(A), def: state(B), diceAtt: 0, diceDef: 0 }); frame(1 - i); }
       return finish(i ? 'def' : 'att', 1);
     }
   }
@@ -353,7 +357,7 @@ function run(P: Prep, seed: number, record: boolean): BattleLog {
       attack(A, B, K, rng); attack(B, A, K, rng);
     }
     settle(A, K); settle(B, K);
-    if (record) daily.push({ att: state(A), def: state(B), diceAtt: A.dice, diceDef: B.dice });
+    if (record) { daily.push({ att: state(A), def: state(B), diceAtt: A.dice, diceDef: B.dice }); frame(); }
     if (day < K.MINIMUM_COMBAT_DAYS) continue;
     // a side is beaten when its line is empty and no reserve can refill it; otherwise reserves keep rolling daily
     const out = P.s.map(S => !hasFront(S) && !hasReserve(S));
@@ -374,7 +378,7 @@ function run(P: Prep, seed: number, record: boolean): BattleLog {
       for (const r of L.regs) r.men *= 1 - K.RETREAT_STRENGTH_DAMAGE;
       notes.push(`${NAME[1 - w]} retreats on day ${day}, losing ${Math.round(K.RETREAT_STRENGTH_DAMAGE * 100)}% of its survivors`);
     }
-    if (record) Object.assign(daily[daily.length - 1], { att: state(A), def: state(B) });  // the last day shows the wipe/retreat losses
+    if (record) { Object.assign(daily[daily.length - 1], { att: state(A), def: state(B) }); frames[frames.length - 1] = { att: snap(A, w === 1), def: snap(B, w === 0) }; }  // the last day shows the wipe/retreat losses, the beaten side routed
     return finish(w ? 'def' : 'att', day);
   }
   notes.push(`No result after ${MAX_DAYS} days`);

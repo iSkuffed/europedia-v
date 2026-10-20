@@ -70,6 +70,19 @@ function checks(d: UnitsData, U: { inf: string; levy: string; hc: string; lc: st
   assert.deepEqual(simulate(d, b0, 50), simulate(d, b0, 50));
   assert.notDeepEqual(simulateOnce(d, b0).daily, simulateOnce(d, { ...b0, seed: 43 }).daily);
 
+  // replay frames: one per day plus the start, same regiments throughout, the beaten side routed in the last frame, men match the losses
+  for (const seed of [1, 2, 3]) {
+    const lg = simulateOnce(d, battle(F(10), F(10), { seed }));
+    assert.equal(lg.frames.length, lg.daily.length + 1);
+    for (const w of ['att', 'def'] as const) {
+      assert.ok(lg.frames.every(f => f[w].length === lg.regs[w].length));
+      const sum = (f: typeof lg.frames[0]) => f[w].reduce((t, r) => t + r[0], 0);
+      assert.ok(Math.abs(sum(lg.frames[0]) - lg.start[w].men) < 1e-6 && Math.abs(sum(lg.frames.at(-1)!) - (lg.start[w].men - lg.losses[w])) < 1);
+    }
+    const lose = lg.winner === 'att' ? 'def' : 'att';
+    assert.ok(lg.frames.at(-1)![lose].every(r => r[3] & 2), 'beaten side shown routed');
+  }
+
   // symmetric battle is close to 50/50
   const sym = line('10 v 10 footmen, flat', d, battle(F(10), F(10)), 4000);
   assert.ok(Math.abs(sym.attWin - sym.defWin) < 0.06, `symmetric ${sym.attWin} vs ${sym.defWin}`);
