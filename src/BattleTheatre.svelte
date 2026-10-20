@@ -217,5 +217,9 @@
   .spd button.on { background: #3d3320; color: var(--gold); border-color: var(--frame-hi); position: relative; }
   .again { background: linear-gradient(#6b5426, #3b2c10) !important; color: var(--gold) !important; }
   .fine { margin: 8px 16px 0; font-size: 11.5px; color: var(--dim); font-style: italic; }
+  /* big screens: scale the whole replay up (everything is in px) */
+  @media (min-width: 1900px) { .th { zoom: 1.3; } }
+  @media (min-width: 2400px) { .th { zoom: 1.6; } }
+  @media (min-width: 3200px) { .th { zoom: 2.1; } }
   @media (max-width: 700px) { .score { grid-template-columns: 1fr; } .dayc { flex-direction: row; gap: 6px; justify-content: center; } .ctl { flex-wrap: wrap; } }
 </style>
