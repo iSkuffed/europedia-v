@@ -459,3 +459,8 @@ a:hover > .art, a:hover > .art.sm { border-color: var(--frame-hi); box-shadow: 0
 .wpick { padding: 6px 8px; border: 1px solid var(--line); background: #0d1117aa; }
 .wpick .chip { margin-top: 6px; }
 .wmark { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #fff3c4; border-radius: 50%; box-shadow: 0 0 0 1px #000, 0 0 6px #000; pointer-events: none; }
+
+/* maker's mark: always in the corner, quiet until hovered */
+.sig { position: fixed; right: 12px; bottom: 10px; z-index: 4; opacity: .3; transition: opacity .2s; line-height: 0; }
+.sig:hover { opacity: .8; }
+.sig img { height: 20px; }

@@ -110,3 +110,4 @@
     <main bind:this={main}></main>
   </div>
 {/if}
+<a class="sig" href="https://github.com/iSkuffed" target="_blank" rel="noopener" title="Skuffed Software"><img src="skuffed.svg" alt="Skuffed Software"></a>
