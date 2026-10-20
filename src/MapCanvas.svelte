@@ -38,38 +38,55 @@
     return {destroy: () => node.removeEventListener('wheel', on)};
   }
 
+  // Colours as one 32-bit word each (little-endian ABGR), so a pixel is one write instead of four.
+  const word = (rgb: ArrayLike<number>, i: number) => (0xff000000 | rgb[i + 2] << 16 | rgb[i + 1] << 8 | rgb[i]) >>> 0;
+  const P32 = $derived.by(() => { const w = new Uint32Array(P.length / 3); for (let i = 0; i < w.length; i++) w[i] = word(P, i * 3); return w; });
+  const sea32 = $derived.by(() => { if (!sea) return undefined; const w = new Uint32Array(256); for (let i = 0; i < 256; i++) w[i] = word(sea.pal, i * 3); return w; });
+
+  // While the map is being dragged or zoomed it is drawn at no more than MOVING_PX pixels (the browser scales the canvas up),
+  // then redrawn at full resolution once it has been still for a moment. A 4K screen has four times the pixels of 1080p,
+  // and every one of them is computed here on the CPU; at 1080p this changes nothing.
+  const MOVING_PX = 2e6;
+  let moving = $state(false), still: ReturnType<typeof setTimeout>;
+  $effect(() => { view; moving = true; clearTimeout(still); still = setTimeout(() => moving = false, 150); return () => clearTimeout(still); });
+  let buf: {cw: number; ch: number; img: ImageData; px: Uint32Array; codes: Uint16Array; sd: Uint8Array} | undefined;  // reused between frames
+
   // redraw at most once a frame
   $effect(() => {
     if (!canvas || !W) return;
-    const m = M, cv = canvas, pal = P, ids = oid, sh = sea, {x0, y0, s} = view, w = W, h = H, after = paint;
+    const m = M, mc = m.c, mw = m.w, mh = m.h, cv = canvas, pal = P32, ids = oid, shd = sea?.d, sp = sea32, {x0, y0, s} = view, w = W, h = H, after = paint, quick = moving;
     const raf = requestAnimationFrame(() => {
-      const dpr = devicePixelRatio || 1, cw = Math.round(w * dpr), ch = Math.round(h * dpr), k = s * dpr;
+      const dpr = devicePixelRatio || 1, full = w * h * dpr * dpr, q = quick && full > MOVING_PX ? Math.sqrt(MOVING_PX / full) : 1;
+      const cw = Math.round(w * dpr * q), ch = Math.round(h * dpr * q), k = s * dpr * q;
       if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+      if (buf?.cw !== cw || buf.ch !== ch) { const img = new ImageData(cw, ch); buf = {cw, ch, img, px: new Uint32Array(img.data.buffer), codes: new Uint16Array(cw * ch), sd: new Uint8Array(cw * ch)}; }
+      const {img, px, codes, sd} = buf;
       const cols = new Int32Array(cw);
-      for (let x = 0; x < cw; x++) cols[x] = ((Math.floor(x0 + x / k) % m.w) + m.w) % m.w;
-      const codes = new Uint16Array(cw * ch), sd = sh && new Uint8Array(cw * ch);
+      for (let x = 0; x < cw; x++) cols[x] = ((Math.floor(x0 + x / k) % mw) + mw) % mw;
       for (let y = 0; y < ch; y++) {
         const my = Math.floor(y0 + y / k), o = y * cw;
-        if (my < 0 || my >= m.h) { sd?.fill(255, o, o + cw); continue; }  // off the map: water (0)
-        const row = my * m.w;
-        for (let x = 0; x < cw; x++) codes[o + x] = m.c[row + cols[x]];
-        if (sd) for (let x = 0; x < cw; x++) sd[o + x] = sh!.d[row + cols[x]];
+        if (my < 0 || my >= mh) { codes.fill(0, o, o + cw); sd.fill(255, o, o + cw); continue; }  // off the map: water (0)
+        const row = my * mw;
+        for (let x = 0; x < cw; x++) codes[o + x] = mc[row + cols[x]];
+        if (shd) for (let x = 0; x < cw; x++) sd[o + x] = shd[row + cols[x]];
       }
-      // offsets 0 / 3 / 6 in the palette: plain, country border (coast for water), location border
-      const img = new ImageData(cw, ch), d = img.data, last = cw * (ch - 1);
-      for (let p = 0; p < cw * ch; p++) {
-        const code = codes[p], r = p % cw < cw - 1 ? codes[p + 1] : code, b = p < last ? codes[p + cw] : code;
-        let o = code * 9;
-        if (code > 1) {
-          if ((r !== code && ids[r] !== ids[code]) || (b !== code && ids[b] !== ids[code])) o += 3;
-          else if (r !== code || b !== code) o += 6;
-        } else if (code === 0 && (r > 0 || b > 0)) o += 3;
-        else if (sd && code === 0) { const q = sd[p] * 3, sp = sh!.pal; d[4 * p] = sp[q]; d[4 * p + 1] = sp[q + 1]; d[4 * p + 2] = sp[q + 2]; d[4 * p + 3] = 255; continue; }
-        d[4 * p] = pal[o]; d[4 * p + 1] = pal[o + 1]; d[4 * p + 2] = pal[o + 2]; d[4 * p + 3] = 255;
+      // palette words 3 * code + 0 / 1 / 2: plain, country border (coast for water), location border
+      for (let y = 0, p = 0; y < ch; y++) {
+        const lastRow = y === ch - 1;
+        for (let x = 0; x < cw; x++, p++) {
+          const code = codes[p], r = x < cw - 1 ? codes[p + 1] : code, b = lastRow ? code : codes[p + cw];
+          let o = code * 3;
+          if (code > 1) {
+            if ((r !== code && ids[r] !== ids[code]) || (b !== code && ids[b] !== ids[code])) o += 1;
+            else if (r !== code || b !== code) o += 2;
+          } else if (code === 0 && (r > 0 || b > 0)) o += 1;
+          else if (sp && code === 0) { px[p] = sp[sd[p]]; continue; }
+          px[p] = pal[o];
+        }
       }
       const ctx = cv.getContext('2d')!;
       ctx.putImageData(img, 0, 0);
-      if (after) { ctx.save(); after(ctx, {x0, y0, s}, dpr); ctx.restore(); }
+      if (after) { ctx.save(); after(ctx, {x0, y0, s}, dpr * q); ctx.restore(); }
     });
     return () => cancelAnimationFrame(raf);
   });

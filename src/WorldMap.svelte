@@ -8,7 +8,7 @@
   import MapCanvas, { type Raster, type View } from './MapCanvas.svelte';
 
   const G = DATA.goods;
-  let N = $state<NationData>(), M = $state<Raster>(), I = $state<MapInfo>(), R = $state<Path2D[]>();
+  let N = $state<NationData>(), M = $state.raw<Raster>(), I = $state<MapInfo>(), R = $state<Path2D[]>();
   loadNations().then(d => N = d);
   loadWorld().then(m => M = m);
   loadMapInfo().then(d => I = d);

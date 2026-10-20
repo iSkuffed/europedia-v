@@ -16,6 +16,10 @@ header { display: flex; gap: 16px; align-items: center; padding: 8px 16px; posit
   background: linear-gradient(#6a4528, #3b2414); border-bottom: 2px solid var(--frame); box-shadow: 0 2px 8px #000a; }
 header h1 { font-size: 20px; margin: 0; color: var(--gold); letter-spacing: .5px; white-space: nowrap; text-shadow: 0 1px 2px #000; }
 header h1 .beta { margin-left: 8px; font-size: 10px; letter-spacing: 1.2px; text-transform: uppercase; vertical-align: 3px; padding: 1px 5px; border: 1px solid var(--frame); border-radius: 2px; color: var(--dim); text-shadow: none; cursor: help; }
+header h1 .gv { margin-left: 6px; font-size: 12px; font-weight: 700; letter-spacing: .8px; vertical-align: 2px; padding: 1px 8px; border: 1px solid var(--frame-hi); border-radius: 10px; color: #2a1c0c;
+  background: linear-gradient(var(--gold), #c9a553); text-shadow: none; cursor: help; }
+header h1 .gv i { display: none; margin-left: 5px; font-style: normal; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+@media (min-width: 1500px) { header h1 .gv i { display: inline; } }
 header nav a { color: #d9c9a3; padding: 4px 12px; border: 1px solid transparent; border-radius: 3px; }
 header nav a.on { color: var(--gold); background: #0006; border-color: var(--frame); }
 #search { flex: 1; max-width: 420px; background: #0d1117e6; color: var(--text); border: 1px solid var(--frame); border-radius: 18px; padding: 6px 14px; }
@@ -283,6 +287,7 @@ table.ptab { border-collapse: collapse; width: 100%; }
 header nav a { white-space: nowrap; }
 #search { min-width: 200px; }
 @media (max-width: 1450px) { .agesel .agename, .agesel .flbl { display: none; } header { gap: 10px; } header nav a { padding: 4px 8px; } #search { min-width: 160px; } }
+@media (max-width: 1350px) { #search { min-width: 90px; } }  /* the version badge takes the room */
 .tips { margin: 6px 0; padding-left: 20px; }
 .tips li { margin-bottom: 8px; }
 .tips li b { color: var(--gold); font-weight: 600; }

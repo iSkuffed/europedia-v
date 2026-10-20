@@ -14,7 +14,7 @@
   import { SCOPE, setScope, loadScope } from './lib/scope.svelte';
   import { tick } from 'svelte';
   // bump these by hand when the data is re-extracted for a new game patch
-  const GAME_VERSION = '1.14.1', DATA_UPDATED = '2026-10-18';
+  const GAME_VERSION = '1.14.1', GAME_BRANCH = 'open beta', DATA_UPDATED = '2026-10-18';
   const updated = new Date(DATA_UPDATED).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
   const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'], AGES = Object.keys(DATA.ages).map(Number);
 
@@ -69,7 +69,8 @@
 
 <header>
   <div class="brand">
-    <h1><a href="#/" title="Home">Europedia V</a><span class="beta" title="Work in progress: some data may be missing or wrong, and layouts may break.">Beta</span></h1>
+    <h1><a href="#/" title="Home">Europedia V</a><span class="beta" title="Work in progress: some data may be missing or wrong, and layouts may break.">Beta</span>
+      <span class="gv" title="Built from the game files of Europa Universalis V {GAME_VERSION} ({GAME_BRANCH}), data updated {updated}. Other versions of the game may differ.">{GAME_VERSION}<i> {GAME_BRANCH}</i></span></h1>
     <small class="legal" title="Fan-made, not affiliated with Paradox Interactive. Game data and art © Paradox Interactive.">Fan-made · not affiliated with Paradox</small>
   </div>
   <nav><a href="#/" class:on={!isPops && !isNations && !isPriv && !isResearch && !isMap && !isUnits}>Production Chains</a><a href="#pops" class:on={isPops}>Pops</a><a href="#n" class:on={isNations}>Nations</a><a href="#m" class:on={isMap}>Map</a><a href="#e" class:on={isPriv}>Privileges</a><a href="#r" class:on={isResearch}>Research</a><a href="#u" class:on={isUnits}>Units</a></nav>

@@ -7,7 +7,7 @@
 
   let { N, tag, mine, radius, sel = $bindable(null) }: { N: NationData; tag: string; mine: Set<string>; radius: number; sel: string | null } = $props();
   const G = DATA.goods;
-  let M = $state<Awaited<ReturnType<typeof loadMap>>>();
+  let M = $state.raw<Awaited<ReturnType<typeof loadMap>>>();
   loadMap().then(m => M = m);
   let W = $state(0);
   const H = $derived(Math.round(W * 0.66));
