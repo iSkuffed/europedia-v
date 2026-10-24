@@ -14,7 +14,7 @@
   import { SCOPE, setScope, loadScope } from './lib/scope.svelte';
   import { tick } from 'svelte';
   // bump these by hand when the data is re-extracted for a new game patch
-  const GAME_VERSION = '1.14.1', GAME_BRANCH = 'open beta', DATA_UPDATED = '2026-10-18';
+  const GAME_VERSION = '1.14.2', GAME_BRANCH = 'open beta', DATA_UPDATED = '2026-10-24';
   const updated = new Date(DATA_UPDATED).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
   const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'], AGES = Object.keys(DATA.ages).map(Number);
 
