@@ -310,7 +310,7 @@ def passes(block, u):  # trigger vs a unit type; anything that needs the viewer'
             ok = v in u['tags']
         elif k == 'is_unit_type':
             ok = v == u['id']
-        elif k == 'scope:culture':
+        elif k in ('scope:culture', 'scope:religious_order'):  # needs the viewer's culture or order
             ok = False
         else:
             raise SystemExit(f'unit_illustrations: unhandled trigger {k}')

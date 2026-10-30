@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
-    "data": "python3 -I build.py && python3 -I unique.py && python3 -I privileges.py && python3 -I advances.py && python3 -I start.py && python3 -I flags.py && python3 -I rivers.py && python3 -I scope.py && python3 -I units.py"
+    "data": "python3 -I overlay.py && python3 -I build.py .game && python3 -I unique.py .game && python3 -I privileges.py .game && python3 -I advances.py .game && python3 -I start.py .game && python3 -I flags.py && python3 -I rivers.py .game && python3 -I scope.py .game && python3 -I units.py .game"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.3.1",

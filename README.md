@@ -19,7 +19,7 @@ npm install
 npm run dev
 ```
 
-The data in `src/` and `public/` is already extracted, so that's all the site needs. To rebuild it from your own install, run `npm run data`. The Python scripts look for the game in the default Steam path on Linux; pass a different path as the first argument to `build.py`. Development values come from a 1337 save file, which `build.py` skips with a warning if it can't find one.
+The data in `src/` and `public/` is already extracted, so that's all the site needs. To rebuild it from your own install, run `npm run data` (it first merges the base game and its DLC folders into `.game/`, so DLC content is included). The Python scripts look for the game in the default Steam path on Linux; pass a different path as the first argument to `build.py`. Development values come from a 1337 save file, which `build.py` skips with a warning if it can't find one.
 
 ## Disclaimer
 
