@@ -1,9 +1,12 @@
 # Europedia V
 
-A reference site for Europa Universalis V, built from the game's own files. Live at **https://iskuffed.github.io/europedia-v/**.
+**[Open the site: iskuffed.github.io/europedia-v](https://iskuffed.github.io/europedia-v/)**. It's free, runs in your browser, and has no ads and nothing to download.
+
+A reference site for Europa Universalis V (EU5), built from the game's own files.
 
 It covers:
 
+- **Battle simulator.** Set up two land armies and run the battle, alongside a browser for every land unit.
 - **Production chains.** What each good takes to make, which buildings produce and use it, and who buys it.
 - **Pops.** What each pop type buys, where it works, and how pops grow and promote.
 - **Nations.** Every country at the 1337 start: its population, raw goods, and what it can make.
